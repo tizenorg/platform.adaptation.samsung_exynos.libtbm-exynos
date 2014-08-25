@@ -46,19 +46,70 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <xf86drm.h>
 #include <tbm_bufmgr.h>
 #include <tbm_bufmgr_backend.h>
-#include "exynos_drm.h"
+#include <exynos_drm.h>
 #include <pthread.h>
+#include <tbm_surface.h>
+#include <tbm_surface_internal.h>
 
 #define DEBUG
 #define USE_DMAIMPORT
-#define TBM_EXYNOS4412_LOG(...) fprintf (stderr, __VA_ARGS__)
+#define TBM_COLOR_FORMAT_COUNT 8
 
 #ifdef DEBUG
-static int bDebug = 0;
-#define DBG(...) if(bDebug&0x1) TBM_EXYNOS4412_LOG (__VA_ARGS__)
+#define LOG_TAG	"TBM_BACKEND"
+#include <dlog.h>
+static int bDebug=0;
+
+char* target_name()
+{
+    FILE *f;
+    char *slash;
+    static int 	initialized = 0;
+    static char app_name[128];
+
+    if ( initialized )
+        return app_name;
+
+    /* get the application name */
+    f = fopen("/proc/self/cmdline", "r");
+
+    if ( !f )
+    {
+        return 0;
+    }
+
+    memset(app_name, 0x00, sizeof(app_name));
+
+    if ( fgets(app_name, 100, f) == NULL )
+    {
+        fclose(f);
+        return 0;
+    }
+
+    fclose(f);
+
+    if ( (slash=strrchr(app_name, '/')) != NULL )
+    {
+        memmove(app_name, slash+1, strlen(slash));
+    }
+
+    initialized = 1;
+
+    return app_name;
+}
+#define TBM_EXYNOS4412_LOG(fmt, args...)		LOGE("\033[31m"  "[%s]" fmt "\033[0m", target_name(), ##args)
+#define DBG(fmt, args...)		if(bDebug&01) LOGE("[%s]" fmt, target_name(), ##args)
 #else
+#define TBM_EXYNOS4412_LOG(...)
 #define DBG(...)
 #endif
+
+#define SIZE_ALIGN( value, base ) (((value) + ((base) - 1)) & ~((base) - 1))
+
+#define TBM_SURFACE_ALIGNMENT_PLANE (64)
+#define TBM_SURFACE_ALIGNMENT_PITCH_RGB (64)
+#define TBM_SURFACE_ALIGNMENT_PITCH_YUV (16)
+
 
 /* check condition */
 #define EXYNOS4412_RETURN_IF_FAIL(cond) {\
@@ -159,6 +210,17 @@ char *STR_OPT[]=
     "WR",
     "RDWR"
 };
+
+
+uint32_t tbm_exynos4412_color_format_list[TBM_COLOR_FORMAT_COUNT] = {   TBM_FORMAT_RGBA8888,
+																		TBM_FORMAT_BGRA8888,
+																		TBM_FORMAT_RGBX8888,
+																		TBM_FORMAT_RGB888,
+																		TBM_FORMAT_NV12,
+																		TBM_FORMAT_NV21,
+																		TBM_FORMAT_YUV420,
+																		TBM_FORMAT_YVU420 };
+
 
 static unsigned int
 _get_exynos_flag_from_tbm (unsigned int ftbm)
@@ -1006,6 +1068,448 @@ tbm_exynos4412_bufmgr_deinit (void *priv)
     free (bufmgr_exynos4412);
 }
 
+int
+tbm_exynos4412_surface_supported_format(uint32_t **formats, uint32_t *num)
+{
+    uint32_t* color_formats=NULL;
+
+    color_formats = (uint32_t*)calloc (1,sizeof(uint32_t)*TBM_COLOR_FORMAT_COUNT);
+
+    if( color_formats == NULL )
+    {
+        return 0;
+    }
+    memcpy( color_formats, tbm_exynos4412_color_format_list , sizeof(uint32_t)*TBM_COLOR_FORMAT_COUNT );
+
+
+    *formats = color_formats;
+    *num = TBM_COLOR_FORMAT_COUNT;
+
+    fprintf (stderr, "tbm_exynos4412_surface_supported_format  count = %d \n",*num);
+
+    return 1;
+}
+
+
+/**
+ * @brief get the plane data of the surface.
+ * @param[in] surface : the surface
+ * @param[in] width : the width of the surface
+ * @param[in] height : the height of the surface
+ * @param[in] format : the format of the surface
+ * @param[in] plane_idx : the format of the surface
+ * @param[out] size : the size of the plane
+ * @param[out] offset : the offset of the plane
+ * @param[out] pitch : the pitch of the plane
+ * @param[out] padding : the padding of the plane
+ * @return 1 if this function succeeds, otherwise 0.
+ */
+int
+tbm_exynos4412_surface_get_plane_data(tbm_surface_h surface, int width, int height, tbm_format format, int plane_idx, uint32_t *size, uint32_t *offset, uint32_t *pitch)
+{
+    int ret = 1;
+    int bpp;
+    int _offset =0;
+    int _pitch =0;
+    int _size =0;
+
+
+    switch(format)
+    {
+        /* 16 bpp RGB */
+        case TBM_FORMAT_XRGB4444:
+        case TBM_FORMAT_XBGR4444:
+        case TBM_FORMAT_RGBX4444:
+        case TBM_FORMAT_BGRX4444:
+        case TBM_FORMAT_ARGB4444:
+        case TBM_FORMAT_ABGR4444:
+        case TBM_FORMAT_RGBA4444:
+        case TBM_FORMAT_BGRA4444:
+        case TBM_FORMAT_XRGB1555:
+        case TBM_FORMAT_XBGR1555:
+        case TBM_FORMAT_RGBX5551:
+        case TBM_FORMAT_BGRX5551:
+        case TBM_FORMAT_ARGB1555:
+        case TBM_FORMAT_ABGR1555:
+        case TBM_FORMAT_RGBA5551:
+        case TBM_FORMAT_BGRA5551:
+        case TBM_FORMAT_RGB565:
+            bpp = 16;
+            _offset = 0;
+			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
+            _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            break;
+        /* 24 bpp RGB */
+        case TBM_FORMAT_RGB888:
+        case TBM_FORMAT_BGR888:
+            bpp = 24;
+            _offset = 0;
+			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
+            _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            break;
+        /* 32 bpp RGB */
+        case TBM_FORMAT_XRGB8888:
+        case TBM_FORMAT_XBGR8888:
+        case TBM_FORMAT_RGBX8888:
+        case TBM_FORMAT_BGRX8888:
+        case TBM_FORMAT_ARGB8888:
+        case TBM_FORMAT_ABGR8888:
+        case TBM_FORMAT_RGBA8888:
+        case TBM_FORMAT_BGRA8888:
+            bpp = 32;
+            _offset = 0;
+			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
+            _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            break;
+
+        /* packed YCbCr */
+        case TBM_FORMAT_YUYV:
+        case TBM_FORMAT_YVYU:
+        case TBM_FORMAT_UYVY:
+        case TBM_FORMAT_VYUY:
+        case TBM_FORMAT_AYUV:
+            bpp = 32;
+            _offset = 0;
+			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+            _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            break;
+
+        /*
+        * 2 plane YCbCr
+        * index 0 = Y plane, [7:0] Y
+        * index 1 = Cr:Cb plane, [15:0] Cr:Cb little endian
+        * or
+        * index 1 = Cb:Cr plane, [15:0] Cb:Cr little endian
+        */
+        case TBM_FORMAT_NV12:
+        case TBM_FORMAT_NV21:
+            bpp = 12;
+            if(plane_idx == 0)
+            {
+                _offset = 0;
+				_pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+            else if( plane_idx ==1 )
+            {
+                _offset = width*height;
+				_pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+				_size = SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+            break;
+
+        case TBM_FORMAT_NV16:
+        case TBM_FORMAT_NV61:
+			bpp = 16;
+            //if(plane_idx == 0)
+            {
+                _offset = 0;
+		_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+		if(plane_idx == 0)
+			break;
+            }
+            //else if( plane_idx ==1 )
+            {
+                _offset += _size;
+		_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+            break;
+
+        /*
+        * 3 plane YCbCr
+        * index 0: Y plane, [7:0] Y
+        * index 1: Cb plane, [7:0] Cb
+        * index 2: Cr plane, [7:0] Cr
+        * or
+        * index 1: Cr plane, [7:0] Cr
+        * index 2: Cb plane, [7:0] Cb
+        */
+        /*
+        NATIVE_BUFFER_FORMAT_YV12
+        NATIVE_BUFFER_FORMAT_I420
+        */
+        case TBM_FORMAT_YUV410:
+        case TBM_FORMAT_YVU410:
+            bpp = 9;
+            break;
+        case TBM_FORMAT_YUV411:
+        case TBM_FORMAT_YVU411:
+        case TBM_FORMAT_YUV420:
+        case TBM_FORMAT_YVU420:
+            bpp = 12;
+            //if(plane_idx == 0)
+            {
+                _offset = 0;
+		        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+		        if(plane_idx == 0)
+			        break;
+            }
+            //else if( plane_idx == 1 )
+            {
+                _offset += _size;
+		        _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+		        _size = SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
+		        if(plane_idx == 1)
+			        break;
+            }
+            //else if (plane_idx == 2 )
+            {
+                _offset += _size;
+		        _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _size = SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+            break;
+        case TBM_FORMAT_YUV422:
+        case TBM_FORMAT_YVU422:
+            bpp = 16;
+            //if(plane_idx == 0)
+            {
+                _offset = 0;
+		        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+		        if(plane_idx == 0)
+			        break;
+            }
+            //else if( plane_idx == 1 )
+            {
+                _offset += _size;
+		        _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+		        _size = SIZE_ALIGN(_pitch*(height),TBM_SURFACE_ALIGNMENT_PLANE);
+		        if(plane_idx == 1)
+			        break;
+            }
+            //else if (plane_idx == 2 )
+            {
+                _offset += _size;
+		        _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _size = SIZE_ALIGN(_pitch*(height),TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+            break;
+        case TBM_FORMAT_YUV444:
+        case TBM_FORMAT_YVU444:
+            bpp = 24;
+            //if(plane_idx == 0)
+            {
+                _offset = 0;
+		        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+		        if(plane_idx == 0)
+			        break;
+            }
+            //else if( plane_idx == 1 )
+            {
+                _offset += _size;
+		        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+		        if(plane_idx == 1)
+			        break;
+            }
+            //else if (plane_idx == 2 )
+            {
+                _offset += _size;
+  		        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+               _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+            break;
+        default:
+            bpp = 0;
+            break;
+    }
+
+    *size = _size;
+    *offset = _offset;
+    *pitch = _pitch;
+
+    return ret;
+}
+/**
+* @brief get the size of the surface with a format.
+* @param[in] surface : the surface
+* @param[in] width : the width of the surface
+* @param[in] height : the height of the surface
+* @param[in] format : the format of the surface
+* @return size of the surface if this function succeeds, otherwise 0.
+*/
+
+int
+tbm_exynos4412_surface_get_size(tbm_surface_h surface, int width, int height, tbm_format format)
+{
+	int ret = 0;
+	int bpp = 0;
+	int _pitch =0;
+	int _size =0;
+	int align =TBM_SURFACE_ALIGNMENT_PLANE;
+
+    switch(format)
+    {
+        /* 16 bpp RGB */
+        case TBM_FORMAT_XRGB4444:
+        case TBM_FORMAT_XBGR4444:
+        case TBM_FORMAT_RGBX4444:
+        case TBM_FORMAT_BGRX4444:
+        case TBM_FORMAT_ARGB4444:
+        case TBM_FORMAT_ABGR4444:
+        case TBM_FORMAT_RGBA4444:
+        case TBM_FORMAT_BGRA4444:
+        case TBM_FORMAT_XRGB1555:
+        case TBM_FORMAT_XBGR1555:
+        case TBM_FORMAT_RGBX5551:
+        case TBM_FORMAT_BGRX5551:
+        case TBM_FORMAT_ARGB1555:
+        case TBM_FORMAT_ABGR1555:
+        case TBM_FORMAT_RGBA5551:
+        case TBM_FORMAT_BGRA5551:
+        case TBM_FORMAT_RGB565:
+            bpp = 16;
+			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
+            _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            break;
+        /* 24 bpp RGB */
+        case TBM_FORMAT_RGB888:
+        case TBM_FORMAT_BGR888:
+            bpp = 24;
+			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
+            _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            break;
+        /* 32 bpp RGB */
+        case TBM_FORMAT_XRGB8888:
+        case TBM_FORMAT_XBGR8888:
+        case TBM_FORMAT_RGBX8888:
+        case TBM_FORMAT_BGRX8888:
+        case TBM_FORMAT_ARGB8888:
+        case TBM_FORMAT_ABGR8888:
+        case TBM_FORMAT_RGBA8888:
+        case TBM_FORMAT_BGRA8888:
+            bpp = 32;
+			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
+            _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            break;
+        /* packed YCbCr */
+        case TBM_FORMAT_YUYV:
+        case TBM_FORMAT_YVYU:
+        case TBM_FORMAT_UYVY:
+        case TBM_FORMAT_VYUY:
+        case TBM_FORMAT_AYUV:
+            bpp = 32;
+			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+            _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            break;
+        /*
+        * 2 plane YCbCr
+        * index 0 = Y plane, [7:0] Y
+        * index 1 = Cr:Cb plane, [15:0] Cr:Cb little endian
+        * or
+        * index 1 = Cb:Cr plane, [15:0] Cb:Cr little endian
+        */
+        case TBM_FORMAT_NV12:
+        case TBM_FORMAT_NV21:
+			bpp = 12;
+			 //plane_idx == 0
+			 {
+				 _pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+				 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+			 }
+			 //plane_idx ==1
+			 {
+				 _pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+				 _size += SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
+			 }
+			 break;
+
+            break;
+        case TBM_FORMAT_NV16:
+        case TBM_FORMAT_NV61:
+            bpp = 16;
+            //plane_idx == 0
+            {
+				_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+            //plane_idx ==1
+            {
+			    _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _size += SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+
+            break;
+        /*
+        * 3 plane YCbCr
+        * index 0: Y plane, [7:0] Y
+        * index 1: Cb plane, [7:0] Cb
+        * index 2: Cr plane, [7:0] Cr
+        * or
+        * index 1: Cr plane, [7:0] Cr
+        * index 2: Cb plane, [7:0] Cb
+        */
+        case TBM_FORMAT_YUV410:
+        case TBM_FORMAT_YVU410:
+            bpp = 9;
+	    align = TBM_SURFACE_ALIGNMENT_PITCH_YUV;
+            break;
+        case TBM_FORMAT_YUV411:
+        case TBM_FORMAT_YVU411:
+        case TBM_FORMAT_YUV420:
+        case TBM_FORMAT_YVU420:
+            bpp = 12;
+	    //plane_idx == 0
+            {
+		_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+            //plane_idx == 1
+            {
+		_pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+		_size += SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+            //plane_idx == 2
+            {
+		_pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _size += SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+
+            break;
+        case TBM_FORMAT_YUV422:
+        case TBM_FORMAT_YVU422:
+            bpp = 16;
+	    //plane_idx == 0
+            {
+		_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+            //plane_idx == 1
+            {
+		_pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+		_size += SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+            //plane_idx == 2
+            {
+		_pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _size += SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+            }
+            break;
+        case TBM_FORMAT_YUV444:
+        case TBM_FORMAT_YVU444:
+            bpp = 24;
+	    align = TBM_SURFACE_ALIGNMENT_PITCH_YUV;
+            break;
+
+        default:
+            bpp = 0;
+            break;
+    }
+
+	if(_size > 0)
+		ret = _size;
+	else
+	    ret =  SIZE_ALIGN( (width * height * bpp) >> 3, align);
+
+    return ret;
+
+}
+
 MODULEINITPPROTO (init_tbm_bufmgr_priv);
 
 static TBMModuleVersionInfo Exynos4412VersRec =
@@ -1078,6 +1582,9 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
     bufmgr_backend->bo_unmap = tbm_exynos4412_bo_unmap,
     bufmgr_backend->bo_cache_flush = tbm_exynos4412_bo_cache_flush,
     bufmgr_backend->bo_get_global_key = tbm_exynos4412_bo_get_global_key;
+    bufmgr_backend->surface_get_plane_data = tbm_exynos4412_surface_get_plane_data;
+    bufmgr_backend->surface_get_size = tbm_exynos4412_surface_get_size;
+    bufmgr_backend->surface_supported_format = tbm_exynos4412_surface_supported_format;
 
     if (bufmgr_exynos4412->use_dma_fence)
     {

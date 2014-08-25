@@ -11,6 +11,7 @@ BuildRequires:  pkgconfig(pthread-stubs)
 BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  pkgconfig(libdrm_exynos)
 BuildRequires:  pkgconfig(libtbm)
+BuildRequires:  pkgconfig(dlog)
 
 %description
 descriptionion: Tizen Buffer manager backend module for exynos4412
