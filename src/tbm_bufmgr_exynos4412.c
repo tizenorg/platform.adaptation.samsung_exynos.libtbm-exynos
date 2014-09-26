@@ -684,9 +684,121 @@ tbm_exynos4412_bo_import (tbm_bo bo, unsigned int key)
                 getpid(), __FUNCTION__, __LINE__, bo_exynos4412->name);
     }
 
-    DBG ("[libtbm-exynos4412:%d] %s size:%d, gem:%d(%d), flags:%d(%d)\n", getpid(),
+    DBG ("[libtbm-exynos4412:%d] %s size:%d, gem:%d(%d, %d), flags:%d(%d)\n", getpid(),
          __FUNCTION__, bo_exynos4412->size,
-         bo_exynos4412->gem, bo_exynos4412->name,
+         bo_exynos4412->gem, bo_exynos4412->name, bo_exynos4412->dmabuf,
+         bo_exynos4412->flags_tbm, bo_exynos4412->flags_exynos);
+
+    return (void *)bo_exynos4412;
+}
+
+static void *
+tbm_exynos4412_bo_import_fd (tbm_bo bo, tbm_fd key)
+{
+    EXYNOS4412_RETURN_VAL_IF_FAIL (bo!=NULL, 0);
+
+    tbm_bufmgr_exynos4412 bufmgr_exynos4412;
+    tbm_bo_exynos4412 bo_exynos4412;
+
+    bufmgr_exynos4412 = (tbm_bufmgr_exynos4412)tbm_backend_get_bufmgr_priv(bo);
+    EXYNOS4412_RETURN_VAL_IF_FAIL (bufmgr_exynos4412!=NULL, 0);
+
+    unsigned int gem = 0;
+    unsigned int real_size = -1;
+    struct drm_exynos_gem_info info = {0, };
+
+	//getting handle from fd
+    struct drm_prime_handle arg = {0, };
+
+	arg.fd = key;
+	arg.flags = 0;
+    if (drmIoctl (bufmgr_exynos4412->fd, DRM_IOCTL_PRIME_FD_TO_HANDLE, &arg))
+    {
+        TBM_EXYNOS4412_LOG ("[libtbm-exynos4412:%d] "
+                 "error %s:%d Cannot getting gem from prime fd=%d\n",
+                 getpid(), __FUNCTION__, __LINE__, arg.fd);
+        return NULL;
+    }
+    gem = arg.handle;
+
+	/* Determine size of bo.  The fd-to-handle ioctl really should
+	 * return the size, but it doesn't.  If we have kernel 3.12 or
+	 * later, we can lseek on the prime fd to get the size.  Older
+	 * kernels will just fail, in which case we fall back to the
+	 * provided (estimated or guess size). */
+	real_size = lseek(key, 0, SEEK_END);
+
+    info.handle = gem;
+    if (drmCommandWriteRead(bufmgr_exynos4412->fd,
+                           DRM_EXYNOS_GEM_GET,
+                           &info,
+                           sizeof(struct drm_exynos_gem_info)))
+    {
+        TBM_EXYNOS4412_LOG ("[libtbm-exynos4412:%d] "
+                "error %s:%d Cannot get gem info=%d\n",
+                getpid(), __FUNCTION__, __LINE__, key);
+        return 0;
+    }
+
+    if (real_size == -1)
+    	real_size = info.size;
+
+    bo_exynos4412 = calloc (1, sizeof(struct _tbm_bo_exynos4412));
+    if (!bo_exynos4412)
+    {
+        TBM_EXYNOS4412_LOG ("[libtbm-exynos4412:%d] "
+                "error %s:%d fail to allocate the bo private\n",
+                getpid(), __FUNCTION__, __LINE__);
+        return 0;
+    }
+
+    bo_exynos4412->fd = bufmgr_exynos4412->fd;
+    bo_exynos4412->gem = gem;
+    bo_exynos4412->size = real_size;
+    bo_exynos4412->flags_exynos = info.flags;
+    bo_exynos4412->flags_tbm = _get_tbm_flag_from_exynos (bo_exynos4412->flags_exynos);
+
+    bo_exynos4412->name = _get_name(bo_exynos4412->fd, bo_exynos4412->gem);
+    if (!bo_exynos4412->name)
+    {
+        TBM_EXYNOS4412_LOG ("[libtbm-exynos4412:%d] "
+                "error %s:%d Cannot get name\n",
+                getpid(), __FUNCTION__, __LINE__);
+        return 0;
+    }
+
+   	bo_exynos4412->dmabuf = (unsigned int)key;
+
+    /* add bo to hash */
+    PrivGem *privGem = NULL;
+    int ret;
+
+    ret = drmHashLookup (bufmgr_exynos4412->hashBos, bo_exynos4412->name, (void**)&privGem);
+    if (ret == 0)
+    {
+        privGem->ref_count++;
+    }
+    else if (ret == 1)
+    {
+        privGem = calloc (1, sizeof(PrivGem));
+        privGem->ref_count = 1;
+        if (drmHashInsert (bufmgr_exynos4412->hashBos, bo_exynos4412->name, (void *)privGem) < 0)
+        {
+            TBM_EXYNOS4412_LOG ("[libtbm-exynos4412:%d] "
+                    "error %s:%d Cannot insert bo to Hash(%d)\n",
+                    getpid(), __FUNCTION__, __LINE__, bo_exynos4412->name);
+        }
+    }
+    else
+    {
+        TBM_EXYNOS4412_LOG ("[libtbm-exynos4412:%d] "
+                "error %s:%d Cannot insert bo to Hash(%d)\n",
+                getpid(), __FUNCTION__, __LINE__, bo_exynos4412->name);
+    }
+
+    DBG ("[libtbm-exynos4412:%d] %s size:%d, gem:%d(%d,%d), flags:%d(%d)\n", getpid(),
+         __FUNCTION__, bo_exynos4412->size,
+         bo_exynos4412->gem, bo_exynos4412->name, bo_exynos4412->dmabuf,
          bo_exynos4412->flags_tbm, bo_exynos4412->flags_exynos);
 
     return (void *)bo_exynos4412;
@@ -720,6 +832,39 @@ tbm_exynos4412_bo_export (tbm_bo bo)
          bo_exynos4412->flags_tbm, bo_exynos4412->flags_exynos);
 
     return (unsigned int)bo_exynos4412->name;
+}
+
+tbm_fd
+tbm_exynos4412_bo_export_fd (tbm_bo bo)
+{
+    EXYNOS4412_RETURN_VAL_IF_FAIL (bo!=NULL, 0);
+
+    tbm_bo_exynos4412 bo_exynos4412;
+
+    bo_exynos4412 = (tbm_bo_exynos4412)tbm_backend_get_bo_priv(bo);
+    EXYNOS4412_RETURN_VAL_IF_FAIL (bo_exynos4412!=NULL, 0);
+
+    if (!bo_exynos4412->dmabuf)
+    {
+        struct drm_prime_handle arg = {0, };
+
+        arg.handle = bo_exynos4412->gem;
+        if (drmIoctl (bo_exynos4412->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg))
+        {
+            TBM_EXYNOS4412_LOG ("[libtbm-exynos4412:%d] "
+                     "error %s:%d Cannot dmabuf=%d\n",
+                     getpid(), __FUNCTION__, __LINE__, bo_exynos4412->gem);
+            return (tbm_fd) NULL;
+        }
+        bo_exynos4412->dmabuf = arg.fd;
+    }
+
+    DBG ("[libtbm-exynos4412:%d] %s size:%d, gem:%d(%d, %d), flags:%d(%d)\n", getpid(),
+         __FUNCTION__, bo_exynos4412->size,
+         bo_exynos4412->gem, bo_exynos4412->name, bo_exynos4412->dmabuf,
+         bo_exynos4412->flags_tbm, bo_exynos4412->flags_exynos);
+
+    return (tbm_fd)bo_exynos4412->dmabuf;
 }
 
 static tbm_bo_handle
@@ -1576,7 +1721,9 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
     bufmgr_backend->bo_alloc = tbm_exynos4412_bo_alloc,
     bufmgr_backend->bo_free = tbm_exynos4412_bo_free,
     bufmgr_backend->bo_import = tbm_exynos4412_bo_import,
+    bufmgr_backend->bo_import_fd = tbm_exynos4412_bo_import_fd,
     bufmgr_backend->bo_export = tbm_exynos4412_bo_export,
+    bufmgr_backend->bo_export_fd = tbm_exynos4412_bo_export_fd,
     bufmgr_backend->bo_get_handle = tbm_exynos4412_bo_get_handle,
     bufmgr_backend->bo_map = tbm_exynos4412_bo_map,
     bufmgr_backend->bo_unmap = tbm_exynos4412_bo_unmap,
