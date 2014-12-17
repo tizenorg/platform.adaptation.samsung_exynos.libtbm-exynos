@@ -1,6 +1,6 @@
 Name:           libtbm-exynos4412
 Version:        1.0.5
-Release:        1
+Release:        2
 License:        MIT
 Summary:        Tizen Buffer Manager - exynos4412 backend
 Group:          System/Libraries

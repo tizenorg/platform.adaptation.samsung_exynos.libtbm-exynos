@@ -305,7 +305,7 @@ _exynos4412_bo_handle (tbm_bo_exynos4412 bo_exynos4412, int device)
                          getpid(), __FUNCTION__, __LINE__, bo_exynos4412->gem);
                 return (tbm_bo_handle) NULL;
             }
-            bo_exynos4412->pBase = (void*)((uint32_t)arg.mapped);
+            bo_exynos4412->pBase = (void*)((uint64_t)arg.mapped);
         }
 
         bo_handle.ptr = (void *)bo_exynos4412->pBase;
@@ -854,7 +854,7 @@ tbm_exynos4412_bo_export_fd (tbm_bo bo)
             TBM_EXYNOS4412_LOG ("[libtbm-exynos4412:%d] "
                      "error %s:%d Cannot dmabuf=%d\n",
                      getpid(), __FUNCTION__, __LINE__, bo_exynos4412->gem);
-            return (tbm_fd) NULL;
+            return (tbm_fd) 0;
         }
         bo_exynos4412->dmabuf = arg.fd;
     }
