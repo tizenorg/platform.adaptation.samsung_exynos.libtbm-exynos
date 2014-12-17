@@ -305,7 +305,7 @@ _exynos4412_bo_handle (tbm_bo_exynos4412 bo_exynos4412, int device)
                          getpid(), __FUNCTION__, __LINE__, bo_exynos4412->gem);
                 return (tbm_bo_handle) NULL;
             }
-            bo_exynos4412->pBase = (void*)((uint64_t)arg.mapped);
+            bo_exynos4412->pBase = (void*)((unsigned int)arg.mapped);
         }
 
         bo_handle.ptr = (void *)bo_exynos4412->pBase;
