@@ -42,7 +42,7 @@ PKG_CHECK_MODULES(LIBTBM, libtbm)
 PKG_CHECK_MODULES(DLOG, dlog)
 
 AC_ARG_ENABLE(cachectrl,
-	      AS_HELP_STRING([--enable-cache-crtl],
+	      AS_HELP_STRING([--enable-cachecrtl],
 	      [Enable cache control (default: enable)]),
 	      [CACHE_CTRL=$enableval], [CACHE_CTRL=yes])
 
