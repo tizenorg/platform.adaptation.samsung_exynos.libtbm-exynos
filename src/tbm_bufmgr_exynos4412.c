@@ -294,18 +294,28 @@ _exynos4412_bo_handle (tbm_bo_exynos4412 bo_exynos4412, int device)
     case TBM_DEVICE_CPU:
         if (!bo_exynos4412->pBase)
         {
-            struct drm_exynos_gem_mmap arg = {0,};
+            struct drm_mode_map_dumb arg = {0,};
+            void *map = NULL;
 
             arg.handle = bo_exynos4412->gem;
-            arg.size = bo_exynos4412->size;
-            if (drmCommandWriteRead (bo_exynos4412->fd, DRM_EXYNOS_GEM_MMAP, &arg, sizeof(arg)))
+            if (drmIoctl (bo_exynos4412->fd, DRM_IOCTL_MODE_MAP_DUMB, &arg))
+            {
+                TBM_EXYNOS4412_LOG ("[libtbm-exynos4412:%d] "
+                         "error %s:%d Cannot map_dumb gem=%d\n",
+                         getpid(), __FUNCTION__, __LINE__, bo_exynos4412->gem);
+                return (tbm_bo_handle) NULL;
+            }
+
+            map = mmap (NULL, bo_exynos4412->size, PROT_READ|PROT_WRITE, MAP_SHARED,
+                              bo_exynos4412->fd, arg.offset);
+            if (map == MAP_FAILED)
             {
                 TBM_EXYNOS4412_LOG ("[libtbm-exynos4412:%d] "
                          "error %s:%d Cannot usrptr gem=%d\n",
                          getpid(), __FUNCTION__, __LINE__, bo_exynos4412->gem);
                 return (tbm_bo_handle) NULL;
             }
-            bo_exynos4412->pBase = (void*)((unsigned long)arg.mapped);
+            bo_exynos4412->pBase = map;
         }
 
         bo_handle.ptr = (void *)bo_exynos4412->pBase;
