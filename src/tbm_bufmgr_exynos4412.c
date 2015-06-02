@@ -490,6 +490,15 @@ tbm_exynos4412_bo_alloc (tbm_bo bo, int size, int flags)
 
     /* add bo to hash */
     PrivGem* privGem = calloc (1, sizeof(PrivGem));
+    if (!privGem)
+    {
+        TBM_EXYNOS4412_LOG ("[libtbm-exynos4412:%d] "
+                "error %s:%d Fail to calloc privGem\n",
+                getpid(), __FUNCTION__, __LINE__);
+        free (bo_exynos4412);
+        return 0;
+    }
+
     privGem->ref_count = 1;
     if (drmHashInsert(bufmgr_exynos4412->hashBos, bo_exynos4412->name, (void *)privGem) < 0)
     {
@@ -647,6 +656,15 @@ tbm_exynos4412_bo_import (tbm_bo bo, unsigned int key)
     else if (ret == 1)
     {
         privGem = calloc (1, sizeof(PrivGem));
+        if (!privGem)
+        {
+            TBM_EXYNOS4412_LOG ("[libtbm-exynos4412:%d] "
+                    "error %s:%d Fail to calloc privGem\n",
+                    getpid(), __FUNCTION__, __LINE__);
+            free (bo_exynos4412);
+            return 0;
+        }
+
         privGem->ref_count = 1;
         if (drmHashInsert (bufmgr_exynos4412->hashBos, bo_exynos4412->name, (void *)privGem) < 0)
         {
@@ -735,6 +753,7 @@ tbm_exynos4412_bo_import_fd (tbm_bo bo, tbm_fd key)
     {
         TBM_EXYNOS4412_LOG ("error bo:%p Cannot get name from gem:%d, fd:%d (%s)\n",
             bo, gem, key, strerror(errno));
+        free (bo_exynos4412);
         return 0;
     }
 
@@ -750,6 +769,15 @@ tbm_exynos4412_bo_import_fd (tbm_bo bo, tbm_fd key)
     else if (ret == 1)
     {
         privGem = calloc (1, sizeof(PrivGem));
+        if (!privGem)
+        {
+            TBM_EXYNOS4412_LOG ("[libtbm-exynos4412:%d] "
+                    "error %s:%d Fail to calloc privGem\n",
+                    getpid(), __FUNCTION__, __LINE__);
+            free (bo_exynos4412);
+            return 0;
+        }
+
         privGem->ref_count = 1;
         if (drmHashInsert (bufmgr_exynos4412->hashBos, bo_exynos4412->name, (void *)privGem) < 0)
         {
