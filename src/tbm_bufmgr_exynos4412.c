@@ -821,7 +821,7 @@ tbm_exynos4412_bo_export_fd (tbm_bo bo)
     {
         TBM_EXYNOS4412_LOG ("error bo:%p Cannot dmabuf=%d (%s)\n",
             bo, bo_exynos4412->gem, strerror(errno));
-        return (tbm_fd) NULL;
+        return (tbm_fd) 0;
     }
 
     DBG (" [%s] bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d(%d), size:%d\n", target_name(),
