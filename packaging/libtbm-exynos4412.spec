@@ -42,7 +42,6 @@ ln -s libtbm_exynos4412.so %{_libdir}/bufmgr/libtbm_default.so
 %postun -p /sbin/ldconfig
 
 %files
-%manifest libtbm-exynos4412.manifest
 %{_libdir}/bufmgr/libtbm_*.so*
 /usr/share/license/%{name}
 
