@@ -1821,6 +1821,18 @@ tbm_exynos4412_fd_to_handle(tbm_bufmgr bufmgr, tbm_fd fd, int device)
     return bo_handle;
 }
 
+int
+tbm_exynos4412_bo_get_flags (tbm_bo bo)
+{
+    EXYNOS4412_RETURN_VAL_IF_FAIL (bo != NULL, 0);
+
+    tbm_bo_exynos4412 bo_exynos4412;
+
+    bo_exynos4412 = (tbm_bo_exynos4412)tbm_backend_get_bo_priv(bo);
+    EXYNOS4412_RETURN_VAL_IF_FAIL (bo_exynos4412 != NULL, 0);
+
+    return bo_exynos4412->flags_tbm;
+}
 
 MODULEINITPPROTO (init_tbm_bufmgr_priv);
 
@@ -1903,6 +1915,7 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
     bufmgr_backend->surface_supported_format = tbm_exynos4412_surface_supported_format;
     bufmgr_backend->fd_to_handle = tbm_exynos4412_fd_to_handle;
     bufmgr_backend->surface_get_num_bos = tbm_exynos4412_surface_get_num_bos;
+    bufmgr_backend->bo_get_flags = tbm_exynos4412_bo_get_flags;
 
     if (bufmgr_exynos4412->use_dma_fence)
     {
