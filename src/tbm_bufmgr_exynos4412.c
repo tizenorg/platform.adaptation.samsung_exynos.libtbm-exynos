@@ -835,21 +835,23 @@ tbm_exynos4412_bo_export (tbm_bo bo)
 tbm_fd
 tbm_exynos4412_bo_export_fd (tbm_bo bo)
 {
-    EXYNOS4412_RETURN_VAL_IF_FAIL (bo!=NULL, 0);
+    EXYNOS4412_RETURN_VAL_IF_FAIL (bo!=NULL, -1);
 
     tbm_bo_exynos4412 bo_exynos4412;
+    int ret;
 
     bo_exynos4412 = (tbm_bo_exynos4412)tbm_backend_get_bo_priv(bo);
-    EXYNOS4412_RETURN_VAL_IF_FAIL (bo_exynos4412!=NULL, 0);
+    EXYNOS4412_RETURN_VAL_IF_FAIL (bo_exynos4412!=NULL, -1);
 
     struct drm_prime_handle arg = {0, };
 
     arg.handle = bo_exynos4412->gem;
-    if (drmIoctl (bo_exynos4412->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg))
+    ret = drmIoctl (bo_exynos4412->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg);
+    if (ret)
     {
         TBM_EXYNOS4412_LOG ("error bo:%p Cannot dmabuf=%d (%s)\n",
             bo, bo_exynos4412->gem, strerror(errno));
-        return (tbm_fd) 0;
+        return (tbm_fd) ret;
     }
 
     DBG (" [%s] bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d(%d), size:%d\n", target_name(),
