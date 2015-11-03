@@ -293,11 +293,11 @@ _exynos4412_bo_handle (tbm_bo_exynos4412 bo_exynos4412, int device)
     case TBM_DEVICE_CPU:
         if (!bo_exynos4412->pBase)
         {
-            struct drm_mode_map_dumb arg = {0,};
+            struct drm_exynos_gem_map arg = {0,};
             void *map = NULL;
 
             arg.handle = bo_exynos4412->gem;
-            if (drmIoctl (bo_exynos4412->fd, DRM_IOCTL_MODE_MAP_DUMB, &arg))
+            if (drmCommandWriteRead (bo_exynos4412->fd, DRM_EXYNOS_GEM_MAP, &arg, sizeof(arg)))
             {
                TBM_EXYNOS4412_LOG ("error Cannot map_dumb gem=%d\n", bo_exynos4412->gem);
                return (tbm_bo_handle) NULL;
