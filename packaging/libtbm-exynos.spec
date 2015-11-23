@@ -1,8 +1,8 @@
-Name:           libtbm-exynos4412
-Version:        1.1.1
+Name:           libtbm-exynos
+Version:        1.2.0
 Release:        1
 License:        MIT
-Summary:        Tizen Buffer Manager - exynos4412 backend
+Summary:        Tizen Buffer Manager - exynos backend
 Group:          System/Libraries
 ExcludeArch:    i586
 Source0:        %{name}-%{version}.tar.gz
@@ -14,7 +14,7 @@ BuildRequires:  pkgconfig(libtbm)
 BuildRequires:  pkgconfig(dlog)
 
 %description
-descriptionion: Tizen Buffer manager backend module for exynos4412
+descriptionion: Tizen Buffer manager backend module for exynos
 
 %prep
 %setup -q
@@ -37,7 +37,7 @@ cp -af COPYING %{buildroot}/usr/share/license/%{name}
 if [ -f %{_libdir}/bufmgr/libtbm_default.so ]; then
     rm -rf %{_libdir}/bufmgr/libtbm_default.so
 fi
-ln -s libtbm_exynos4412.so %{_libdir}/bufmgr/libtbm_default.so
+ln -s libtbm_exynos.so %{_libdir}/bufmgr/libtbm_default.so
 
 %postun -p /sbin/ldconfig
 
