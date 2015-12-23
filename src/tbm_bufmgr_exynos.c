@@ -424,6 +424,7 @@ tbm_exynos_bo_size (tbm_bo bo)
     tbm_bo_exynos bo_exynos;
 
     bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
+    EXYNOS_RETURN_VAL_IF_FAIL (bo_exynos!=NULL, 0);
 
     return bo_exynos->size;
 }
