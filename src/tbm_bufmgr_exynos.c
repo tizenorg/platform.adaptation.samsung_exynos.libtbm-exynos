@@ -1007,6 +1007,7 @@ tbm_exynos_bo_lock(tbm_bo bo, int device, int opt)
 {
     EXYNOS_RETURN_VAL_IF_FAIL (bo!=NULL, 0);
 
+#ifndef ALWAYS_BACKEND_CTRL
     tbm_bufmgr_exynos bufmgr_exynos;
     tbm_bo_exynos bo_exynos;
     struct dma_buf_fence fence;
@@ -1105,6 +1106,7 @@ tbm_exynos_bo_lock(tbm_bo bo, int device, int opt)
           bo,
           bo_exynos->gem, bo_exynos->name,
           bo_exynos->dmabuf);
+#endif /* ALWAYS_BACKEND_CTRL */
 
     return 1;
 }
@@ -1114,6 +1116,7 @@ tbm_exynos_bo_unlock(tbm_bo bo)
 {
     EXYNOS_RETURN_VAL_IF_FAIL (bo!=NULL, 0);
 
+#ifndef ALWAYS_BACKEND_CTRL
     tbm_bo_exynos bo_exynos;
     struct dma_buf_fence fence;
     struct flock filelock;
@@ -1180,6 +1183,7 @@ tbm_exynos_bo_unlock(tbm_bo bo)
           bo,
           bo_exynos->gem, bo_exynos->name,
           bo_exynos->dmabuf);
+#endif /* ALWAYS_BACKEND_CTRL */
 
     return 1;
 }
@@ -1920,6 +1924,12 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
     bufmgr_backend->surface_get_num_bos = tbm_exynos_surface_get_num_bos;
     bufmgr_backend->bo_get_flags = tbm_exynos_bo_get_flags;
 
+#ifdef ALWAYS_BACKEND_CTRL
+    bufmgr_backend->flags = (TBM_LOCK_CTRL_BACKEND | TBM_CACHE_CTRL_BACKEND);
+    bufmgr_backend->bo_lock = NULL;
+    bufmgr_backend->bo_lock2 = tbm_exynos_bo_lock;
+    bufmgr_backend->bo_unlock = tbm_exynos_bo_unlock;
+#else
     if (bufmgr_exynos->use_dma_fence)
     {
         bufmgr_backend->flags = (TBM_LOCK_CTRL_BACKEND | TBM_CACHE_CTRL_BACKEND);
@@ -1933,6 +1943,7 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
         bufmgr_backend->bo_lock = NULL;
         bufmgr_backend->bo_unlock = NULL;
     }
+#endif /* ALWAYS_BACKEND_CTRL */
 
     if (!tbm_backend_init (bufmgr, bufmgr_backend))
     {

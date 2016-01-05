@@ -50,6 +50,15 @@ if test "x$CACHE_CTRL" = xyes; then
     AC_DEFINE(ENABLE_CACHECRTL, 1, [Enable cache control])
 fi
 
+AC_ARG_ENABLE(backendctrl,
+	      AS_HELP_STRING([--enable-backendctrl],
+	      [Enable always backend ctrl (default: enable)]),
+	      [BACKENED_CTRL=$enableval], [BACKEND_CTRL=yes])
+
+if test "x$BACKEND_CTRL" = xyes; then
+    AC_DEFINE(ALWAYS_BACKEND_CTRL, 1, [Enable always backend ctrl])
+fi
+
 LIBTBM_EXYNOS_CFLAGS="$LIBDRM_CFLAGS $LIBDRM_EXYNOS_CFLAGS $LIBTBM_CFLAGS $DLOG_CFLAGS "
 LIBTBM_EXYNOS_LIBS="$LIBDRM_LIBS $LIBDRM_EXYNOS_LIBS $LIBTBM_LIBS $DLOG_LIBS "
 AC_SUBST(LIBTBM_EXYNOS_CFLAGS)
