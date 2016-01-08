@@ -105,11 +105,22 @@ char* target_name()
 #endif
 
 #define SIZE_ALIGN( value, base ) (((value) + ((base) - 1)) & ~((base) - 1))
+#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
 
 #define TBM_SURFACE_ALIGNMENT_PLANE (64)
+#define TBM_SURFACE_ALIGNMENT_PLANE_NV12 (4096)
 #define TBM_SURFACE_ALIGNMENT_PITCH_RGB (64)
 #define TBM_SURFACE_ALIGNMENT_PITCH_YUV (16)
 
+#define SZ_1M                                   0x00100000
+#define S5P_FIMV_MAX_FRAME_SIZE                 (2 * SZ_1M)
+#define S5P_FIMV_D_ALIGN_PLANE_SIZE             64
+#define S5P_FIMV_NUM_PIXELS_IN_MB_ROW           16
+#define S5P_FIMV_NUM_PIXELS_IN_MB_COL           16
+#define S5P_FIMV_DEC_BUF_ALIGN                  (8 * 1024)
+#define S5P_FIMV_NV12MT_HALIGN                  128
+#define S5P_FIMV_NV12MT_VALIGN                  64
 
 /* check condition */
 #define EXYNOS_RETURN_IF_FAIL(cond) {\
@@ -1237,6 +1248,55 @@ tbm_exynos_surface_supported_format(uint32_t **formats, uint32_t *num)
     return 1;
 }
 
+static int
+_new_calc_plane_nv12(int width, int height)
+{
+    int mbX, mbY;
+
+    mbX = DIV_ROUND_UP(width, S5P_FIMV_NUM_PIXELS_IN_MB_ROW);
+    mbY = DIV_ROUND_UP(height, S5P_FIMV_NUM_PIXELS_IN_MB_COL);
+
+    if (width * height < S5P_FIMV_MAX_FRAME_SIZE)
+      mbY = (mbY + 1) / 2 * 2;
+
+    return ((mbX * S5P_FIMV_NUM_PIXELS_IN_MB_COL) * (mbY * S5P_FIMV_NUM_PIXELS_IN_MB_ROW));
+}
+
+static int
+_calc_yplane_nv12(int width, int height)
+{
+    int mbX, mbY;
+
+    mbX = SIZE_ALIGN(width + 24, S5P_FIMV_NV12MT_HALIGN);
+    mbY = SIZE_ALIGN(height + 16, S5P_FIMV_NV12MT_VALIGN);
+
+    return SIZE_ALIGN(mbX * mbY, S5P_FIMV_DEC_BUF_ALIGN);;
+}
+
+static int
+_calc_uvplane_nv12(int width, int height)
+{
+    int mbX, mbY;
+
+    mbX = SIZE_ALIGN(width + 16, S5P_FIMV_NV12MT_HALIGN);
+    mbY = SIZE_ALIGN(height + 4, S5P_FIMV_NV12MT_VALIGN);
+
+    return SIZE_ALIGN((mbX * mbY) >> 1, S5P_FIMV_DEC_BUF_ALIGN);;
+}
+
+static int
+_new_calc_yplane_nv12(int width, int height)
+{
+    return SIZE_ALIGN (_new_calc_plane(width, height) + S5P_FIMV_D_ALIGN_PLANE_SIZE,
+          TBM_SURFACE_ALIGNMENT_PLANE_NV12);
+}
+
+static int
+_new_calc_uvplane_nv12(int width, int height)
+{
+    return SIZE_ALIGN((_new_calc_plane(width, height) >> 1) + S5P_FIMV_D_ALIGN_PLANE_SIZE,
+          TBM_SURFACE_ALIGNMENT_PLANE_NV12);
+}
 
 /**
  * @brief get the plane data of the surface.
@@ -1338,14 +1398,14 @@ tbm_exynos_surface_get_plane_data(tbm_surface_h surface, int width, int height, 
             {
                 _offset = 0;
 				_pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
-                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+                _size = MAX(_calc_yplane_nv12(width, height), _new_calc_yplane_nv12(width, height));
                 _bo_idx = 0;
             }
             else if( plane_idx ==1 )
             {
                 _offset = 0;
 				_pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
-				_size = SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
+				_size = MAX(_calc_uvplane_nv12(width, height), _new_calc_uvplane_nv12(width, height));
                 _bo_idx = 1;
             }
             break;
@@ -1675,6 +1735,19 @@ tbm_exynos_surface_get_size(tbm_surface_h surface, int width, int height, tbm_fo
         * index 1 = Cb:Cr plane, [15:0] Cb:Cr little endian
         */
         case TBM_FORMAT_NV12:
+			bpp = 12;
+			 //plane_idx == 0
+			 {
+				 _pitch = SIZE_ALIGN(width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+				 _size = MAX(_calc_yplane_nv12(width,height), _new_calc_yplane_nv12(width,height));
+			 }
+			 //plane_idx ==1
+			 {
+				 _pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+				 _size += MAX(_calc_uvplane_nv12(width,height), _new_calc_uvplane_nv12(width,height));
+			 }
+			 break;
+
         case TBM_FORMAT_NV21:
 			bpp = 12;
 			 //plane_idx == 0
@@ -1689,7 +1762,6 @@ tbm_exynos_surface_get_size(tbm_surface_h surface, int width, int height, tbm_fo
 			 }
 			 break;
 
-            break;
         case TBM_FORMAT_NV16:
         case TBM_FORMAT_NV61:
             bpp = 16;
