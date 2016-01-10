@@ -49,6 +49,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <pthread.h>
 #include <tbm_surface.h>
 #include <tbm_surface_internal.h>
+#include "tbm_wayland.h"
 
 #define DEBUG
 #define USE_DMAIMPORT
@@ -191,6 +192,8 @@ struct _tbm_bufmgr_dumb
     void* hashBos;
 
     int use_dma_fence;
+
+    int fd_owner;
 };
 
 char *STR_DEVICE[]=
@@ -1137,6 +1140,9 @@ tbm_dumb_bufmgr_deinit (void *priv)
         bufmgr_dumb->hashBos = NULL;
     }
 
+    if (bufmgr_dumb->fd_owner)
+        close(bufmgr_dumb->fd);
+
     free (bufmgr_dumb);
 }
 
@@ -1789,8 +1795,15 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
         return 0;
     }
 
-    bufmgr_dumb->fd = fd;
-    if (bufmgr_dumb->fd < 0)
+    if (fd < 0)
+    {
+        bufmgr_dumb->fd = tbm_bufmgr_get_drm_fd_wayland();
+        bufmgr_dumb->fd_owner = 1;
+    }
+    else
+        bufmgr_dumb->fd = fd;
+
+    if (bufmgr_dumb->fd  < 0)
     {
         TBM_DUMB_LOG ("error: Fail to create drm!\n");
         free (bufmgr_dumb);
@@ -1820,6 +1833,10 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
         TBM_DUMB_LOG ("error: Fail to create drm!\n");
         if (bufmgr_dumb->hashBos)
             drmHashDestroy (bufmgr_dumb->hashBos);
+
+        if (bufmgr_dumb->fd_owner)
+            close(bufmgr_dumb->fd);
+
         free (bufmgr_dumb);
         return 0;
     }
@@ -1861,6 +1878,10 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
     if (!tbm_backend_init (bufmgr, bufmgr_backend))
     {
         TBM_DUMB_LOG ("error: Fail to init backend!\n");
+
+        if (bufmgr_dumb->fd_owner)
+            close(bufmgr_dumb->fd);
+
         tbm_backend_free (bufmgr_backend);
         free (bufmgr_dumb);
         return 0;
