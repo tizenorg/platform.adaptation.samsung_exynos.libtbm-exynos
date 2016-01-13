@@ -1,5 +1,5 @@
 Name:           libtbm-exynos
-Version:        1.2.0
+Version:        1.2.1
 Release:        1
 License:        MIT
 Summary:        Tizen Buffer Manager - exynos backend
@@ -12,6 +12,7 @@ BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  pkgconfig(libdrm_exynos)
 BuildRequires:  pkgconfig(libtbm)
 BuildRequires:  pkgconfig(dlog)
+BuildRequires:  pkgconfig(libudev)
 
 %description
 descriptionion: Tizen Buffer manager backend module for exynos
