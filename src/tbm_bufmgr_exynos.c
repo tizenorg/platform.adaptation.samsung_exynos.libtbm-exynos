@@ -46,11 +46,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <xf86drm.h>
 #include <tbm_bufmgr.h>
 #include <tbm_bufmgr_backend.h>
-#include <exynos_drm.h>
 #include <pthread.h>
 #include <tbm_surface.h>
 #include <tbm_surface_internal.h>
-#include <libudev.h>
 
 #define DEBUG
 #define USE_DMAIMPORT
@@ -106,22 +104,11 @@ char* target_name()
 #endif
 
 #define SIZE_ALIGN( value, base ) (((value) + ((base) - 1)) & ~((base) - 1))
-#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
-#define MAX(a,b) ((a) > (b) ? (a) : (b))
 
 #define TBM_SURFACE_ALIGNMENT_PLANE (64)
-#define TBM_SURFACE_ALIGNMENT_PLANE_NV12 (4096)
 #define TBM_SURFACE_ALIGNMENT_PITCH_RGB (64)
 #define TBM_SURFACE_ALIGNMENT_PITCH_YUV (16)
 
-#define SZ_1M                                   0x00100000
-#define S5P_FIMV_MAX_FRAME_SIZE                 (2 * SZ_1M)
-#define S5P_FIMV_D_ALIGN_PLANE_SIZE             64
-#define S5P_FIMV_NUM_PIXELS_IN_MB_ROW           16
-#define S5P_FIMV_NUM_PIXELS_IN_MB_COL           16
-#define S5P_FIMV_DEC_BUF_ALIGN                  (8 * 1024)
-#define S5P_FIMV_NV12MT_HALIGN                  128
-#define S5P_FIMV_NV12MT_VALIGN                  64
 
 /* check condition */
 #define EXYNOS_RETURN_IF_FAIL(cond) {\
@@ -204,8 +191,6 @@ struct _tbm_bufmgr_exynos
     void* hashBos;
 
     int use_dma_fence;
-
-    int fd_owner;
 };
 
 char *STR_DEVICE[]=
@@ -235,110 +220,11 @@ uint32_t tbm_exynos_color_format_list[TBM_COLOR_FORMAT_COUNT] = {   TBM_FORMAT_R
 																		TBM_FORMAT_YUV420,
 																		TBM_FORMAT_YVU420 };
 
-static inline int
-_is_drm_master(int drm_fd)
-{
-    drm_magic_t magic;
-
-    return drmGetMagic(drm_fd, &magic) == 0 &&
-        drmAuthMagic(drm_fd, magic) == 0;
-}
-
-static int
-_get_render_node ()
-{
-    struct udev *udev = NULL;
-    struct udev_enumerate *e = NULL;
-    struct udev_list_entry *entry = NULL;
-    struct udev_device *device = NULL, *drm_device = NULL, *device_parent = NULL;
-    const char *filepath;
-    struct stat s;
-    int fd = -1;
-    int ret;
-
-    udev = udev_new();
-
-    e = udev_enumerate_new(udev);
-    udev_enumerate_add_match_subsystem(e, "drm");
-    udev_enumerate_add_match_sysname(e, "renderD[0-9]*");
-    udev_enumerate_scan_devices(e);
-
-    udev_list_entry_foreach(entry, udev_enumerate_get_list_entry(e))
-    {
-        device = udev_device_new_from_syspath(udev_enumerate_get_udev(e),
-                                              udev_list_entry_get_name
-                                              (entry));
-        device_parent = udev_device_get_parent(device);
-        /* Not need unref device_parent. device_parent and device have same refcnt */
-        if (device_parent)
-        {
-            if (strcmp(udev_device_get_sysname(device_parent), "exynos-drm") == 0)
-            {
-                drm_device = device;
-                DBG("[%s] Found render device: '%s' (%s)\n",
-                        target_name(),
-                        udev_device_get_syspath(drm_device),
-                        udev_device_get_sysname(device_parent));
-                break;
-            }
-        }
-        udev_device_unref(device);
-    }
-
-    udev_enumerate_unref(e);
-
-    /* Get device file path. */
-    filepath = udev_device_get_devnode(drm_device);
-    if (!filepath)
-    {
-        TBM_EXYNOS_LOG ("udev_device_get_devnode() failed.\n");
-        udev_device_unref(drm_device);
-        udev_unref(udev);
-        return -1;
-    }
-
-    /* Open DRM device file and check validity. */
-    fd = open(filepath, O_RDWR | O_CLOEXEC);
-    if (fd < 0)
-    {
-        TBM_EXYNOS_LOG ("open(%s, O_RDWR | O_CLOEXEC) failed.\n");
-        udev_device_unref(drm_device);
-        udev_unref(udev);
-        return -1;
-    }
-
-    ret = fstat(fd, &s);
-    if (ret)
-    {
-        TBM_EXYNOS_LOG ("fstat() failed %s.\n");
-        udev_device_unref(drm_device);
-        udev_unref(udev);
-        return -1;
-    }
-
-    udev_device_unref(drm_device);
-    udev_unref(udev);
-
-    return fd;
-}
 
 static unsigned int
 _get_exynos_flag_from_tbm (unsigned int ftbm)
 {
     unsigned int flags = 0;
-
-    if (ftbm & TBM_BO_SCANOUT)
-        flags |= EXYNOS_BO_CONTIG;
-    else
-        flags |= EXYNOS_BO_NONCONTIG;
-
-    if (ftbm & TBM_BO_WC)
-        flags |= EXYNOS_BO_WC;
-    else if (ftbm & TBM_BO_NONCACHABLE)
-        flags |= EXYNOS_BO_NONCACHABLE;
-    else
-        flags |= EXYNOS_BO_CACHABLE;
-
     return flags;
 }
 
@@ -347,17 +233,9 @@ _get_tbm_flag_from_exynos (unsigned int fexynos)
 {
     unsigned int flags = 0;
 
-    if (fexynos & EXYNOS_BO_NONCONTIG)
-        flags |= TBM_BO_DEFAULT;
-    else
-        flags |= TBM_BO_SCANOUT;
-
-    if (fexynos & EXYNOS_BO_WC)
-        flags |= TBM_BO_WC;
-    else if (fexynos & EXYNOS_BO_CACHABLE)
-        flags |= TBM_BO_DEFAULT;
-    else
-        flags |= TBM_BO_NONCACHABLE;
+    flags |= TBM_BO_DEFAULT;
+    flags |= TBM_BO_SCANOUT;
+    flags |= TBM_BO_NONCACHABLE;
 
     return flags;
 }
@@ -393,11 +271,11 @@ _exynos_bo_handle (tbm_bo_exynos bo_exynos, int device)
     case TBM_DEVICE_CPU:
         if (!bo_exynos->pBase)
         {
-            struct drm_exynos_gem_map arg = {0,};
+            struct drm_mode_map_dumb arg = {0,};
             void *map = NULL;
 
             arg.handle = bo_exynos->gem;
-            if (drmCommandWriteRead (bo_exynos->fd, DRM_EXYNOS_GEM_MAP, &arg, sizeof(arg)))
+            if (drmIoctl (bo_exynos->fd, DRM_IOCTL_MODE_MAP_DUMB, &arg))
             {
                TBM_EXYNOS_LOG ("error Cannot map_dumb gem=%d\n", bo_exynos->gem);
                return (tbm_bo_handle) NULL;
@@ -467,49 +345,7 @@ static int
 _exynos_cache_flush (int fd, tbm_bo_exynos bo_exynos, int flags)
 {
 #ifdef ENABLE_CACHECRTL
-    struct drm_exynos_gem_cache_op cache_op = {0, };
-    int ret;
-
-    /* if bo_exynos is null, do cache_flush_all */
-    if(bo_exynos)
-    {
-        cache_op.flags = 0;
-        cache_op.usr_addr = (uint64_t)((uint32_t)bo_exynos->pBase);
-        cache_op.size = bo_exynos->size;
-    }
-    else
-    {
-        flags = TBM_CACHE_FLUSH_ALL;
-        cache_op.flags = 0;
-        cache_op.usr_addr = 0;
-        cache_op.size = 0;
-    }
-
-    if (flags & TBM_CACHE_INV)
-    {
-        if(flags & TBM_CACHE_ALL)
-            cache_op.flags |= EXYNOS_DRM_CACHE_INV_ALL;
-        else
-            cache_op.flags |= EXYNOS_DRM_CACHE_INV_RANGE;
-    }
-
-    if (flags & TBM_CACHE_CLN)
-    {
-        if(flags & TBM_CACHE_ALL)
-            cache_op.flags |= EXYNOS_DRM_CACHE_CLN_ALL;
-        else
-            cache_op.flags |= EXYNOS_DRM_CACHE_CLN_RANGE;
-    }
-
-    if(flags & TBM_CACHE_ALL)
-        cache_op.flags |= EXYNOS_DRM_ALL_CACHES_CORES;
-
-    ret = drmCommandWriteRead (fd, DRM_EXYNOS_GEM_CACHE_OP, &cache_op, sizeof(cache_op));
-    if (ret)
-    {
-        TBM_EXYNOS_LOG ("error fail to flush the cache.\n");
-        return 0;
-    }
+    TBM_EXYNOS_LOG ("warning fail to enable the cache flush.\n");
 #else
     TBM_EXYNOS_LOG ("warning fail to enable the cache flush.\n");
 #endif
@@ -524,7 +360,6 @@ tbm_exynos_bo_size (tbm_bo bo)
     tbm_bo_exynos bo_exynos;
 
     bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
-    EXYNOS_RETURN_VAL_IF_FAIL (bo_exynos!=NULL, 0);
 
     return bo_exynos->size;
 }
@@ -549,18 +384,17 @@ tbm_exynos_bo_alloc (tbm_bo bo, int size, int flags)
     }
 
     exynos_flags = _get_exynos_flag_from_tbm (flags);
-    if((flags & TBM_BO_SCANOUT) &&
-        size <= 4*1024)
-    {
-        exynos_flags |= EXYNOS_BO_NONCONTIG;
-    }
 
-    struct drm_exynos_gem_create arg = {0, };
-    arg.size = size;
+    struct drm_mode_create_dumb arg = {0, };
+    //as we know only size for new bo set height=1 and bpp=8 and in this case
+    //width will by equal to size in bytes;
+    arg.height = 1;
+    arg.bpp = 8;
+    arg.width = size;
     arg.flags = exynos_flags;
-    if (drmCommandWriteRead(bufmgr_exynos->fd, DRM_EXYNOS_GEM_CREATE, &arg, sizeof(arg)))
+    if (drmIoctl (bufmgr_exynos->fd, DRM_IOCTL_MODE_CREATE_DUMB, &arg))
     {
-        TBM_EXYNOS_LOG ("error Cannot create bo(flag:%x, size:%d)\n", arg.flags, (unsigned int)arg.size);
+        TBM_EXYNOS_LOG ("error Cannot create bo(flag:%x, size:%d)\n", arg.flags, (unsigned int)size);
         free (bo_exynos);
         return 0;
     }
@@ -698,22 +532,11 @@ tbm_exynos_bo_import (tbm_bo bo, unsigned int key)
     EXYNOS_RETURN_VAL_IF_FAIL (bufmgr_exynos!=NULL, 0);
 
     struct drm_gem_open arg = {0, };
-    struct drm_exynos_gem_info info = {0, };
 
     arg.name = key;
     if (drmIoctl(bufmgr_exynos->fd, DRM_IOCTL_GEM_OPEN, &arg))
     {
         TBM_EXYNOS_LOG ("error Cannot open gem name=%d\n", key);
-        return 0;
-    }
-
-    info.handle = arg.handle;
-    if (drmCommandWriteRead(bufmgr_exynos->fd,
-                           DRM_EXYNOS_GEM_GET,
-                           &info,
-                           sizeof(struct drm_exynos_gem_info)))
-    {
-        TBM_EXYNOS_LOG ("error Cannot get gem info=%d\n", key);
         return 0;
     }
 
@@ -727,7 +550,7 @@ tbm_exynos_bo_import (tbm_bo bo, unsigned int key)
     bo_exynos->fd = bufmgr_exynos->fd;
     bo_exynos->gem = arg.handle;
     bo_exynos->size = arg.size;
-    bo_exynos->flags_exynos = info.flags;
+    bo_exynos->flags_exynos = 0;
     bo_exynos->name = key;
     bo_exynos->flags_tbm = _get_tbm_flag_from_exynos (bo_exynos->flags_exynos);
 
@@ -800,7 +623,6 @@ tbm_exynos_bo_import_fd (tbm_bo bo, tbm_fd key)
 
     unsigned int gem = 0;
     unsigned int real_size = -1;
-    struct drm_exynos_gem_info info = {0, };
 
 	//getting handle from fd
     struct drm_prime_handle arg = {0, };
@@ -822,19 +644,8 @@ tbm_exynos_bo_import_fd (tbm_bo bo, tbm_fd key)
 	 * provided (estimated or guess size). */
 	real_size = lseek(key, 0, SEEK_END);
 
-    info.handle = gem;
-    if (drmCommandWriteRead(bufmgr_exynos->fd,
-                           DRM_EXYNOS_GEM_GET,
-                           &info,
-                           sizeof(struct drm_exynos_gem_info)))
-    {
-        TBM_EXYNOS_LOG ("error bo:%p Cannot get gem info from gem:%d, fd:%d (%s)\n",
-                bo, gem, key, strerror(errno));
-        return 0;
-    }
-
     if (real_size == -1)
-    	real_size = info.size;
+        return 0;
 
     bo_exynos = calloc (1, sizeof(struct _tbm_bo_exynos));
     if (!bo_exynos)
@@ -846,7 +657,7 @@ tbm_exynos_bo_import_fd (tbm_bo bo, tbm_fd key)
     bo_exynos->fd = bufmgr_exynos->fd;
     bo_exynos->gem = gem;
     bo_exynos->size = real_size;
-    bo_exynos->flags_exynos = info.flags;
+    bo_exynos->flags_exynos = 0;
     bo_exynos->flags_tbm = _get_tbm_flag_from_exynos (bo_exynos->flags_exynos);
 
     bo_exynos->name = _get_name(bo_exynos->fd, bo_exynos->gem);
@@ -936,23 +747,21 @@ tbm_exynos_bo_export (tbm_bo bo)
 tbm_fd
 tbm_exynos_bo_export_fd (tbm_bo bo)
 {
-    EXYNOS_RETURN_VAL_IF_FAIL (bo!=NULL, -1);
+    EXYNOS_RETURN_VAL_IF_FAIL (bo!=NULL, 0);
 
     tbm_bo_exynos bo_exynos;
-    int ret;
 
     bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
-    EXYNOS_RETURN_VAL_IF_FAIL (bo_exynos!=NULL, -1);
+    EXYNOS_RETURN_VAL_IF_FAIL (bo_exynos!=NULL, 0);
 
     struct drm_prime_handle arg = {0, };
 
     arg.handle = bo_exynos->gem;
-    ret = drmIoctl (bo_exynos->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg);
-    if (ret)
+    if (drmIoctl (bo_exynos->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg))
     {
         TBM_EXYNOS_LOG ("error bo:%p Cannot dmabuf=%d (%s)\n",
             bo, bo_exynos->gem, strerror(errno));
-        return (tbm_fd) ret;
+        return (tbm_fd) NULL;
     }
 
     DBG (" [%s] bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d(%d), size:%d\n", target_name(),
@@ -1107,7 +916,6 @@ tbm_exynos_bo_lock(tbm_bo bo, int device, int opt)
 {
     EXYNOS_RETURN_VAL_IF_FAIL (bo!=NULL, 0);
 
-#ifndef ALWAYS_BACKEND_CTRL
     tbm_bufmgr_exynos bufmgr_exynos;
     tbm_bo_exynos bo_exynos;
     struct dma_buf_fence fence;
@@ -1206,7 +1014,6 @@ tbm_exynos_bo_lock(tbm_bo bo, int device, int opt)
           bo,
           bo_exynos->gem, bo_exynos->name,
           bo_exynos->dmabuf);
-#endif /* ALWAYS_BACKEND_CTRL */
 
     return 1;
 }
@@ -1216,7 +1023,6 @@ tbm_exynos_bo_unlock(tbm_bo bo)
 {
     EXYNOS_RETURN_VAL_IF_FAIL (bo!=NULL, 0);
 
-#ifndef ALWAYS_BACKEND_CTRL
     tbm_bo_exynos bo_exynos;
     struct dma_buf_fence fence;
     struct flock filelock;
@@ -1283,7 +1089,6 @@ tbm_exynos_bo_unlock(tbm_bo bo)
           bo,
           bo_exynos->gem, bo_exynos->name,
           bo_exynos->dmabuf);
-#endif /* ALWAYS_BACKEND_CTRL */
 
     return 1;
 }
@@ -1312,9 +1117,6 @@ tbm_exynos_bufmgr_deinit (void *priv)
         bufmgr_exynos->hashBos = NULL;
     }
 
-    if (bufmgr_exynos->fd_owner)
-        close (bufmgr_exynos->fd);
-
     free (bufmgr_exynos);
 }
 
@@ -1340,55 +1142,6 @@ tbm_exynos_surface_supported_format(uint32_t **formats, uint32_t *num)
     return 1;
 }
 
-static int
-_new_calc_plane_nv12(int width, int height)
-{
-    int mbX, mbY;
-
-    mbX = DIV_ROUND_UP(width, S5P_FIMV_NUM_PIXELS_IN_MB_ROW);
-    mbY = DIV_ROUND_UP(height, S5P_FIMV_NUM_PIXELS_IN_MB_COL);
-
-    if (width * height < S5P_FIMV_MAX_FRAME_SIZE)
-      mbY = (mbY + 1) / 2 * 2;
-
-    return ((mbX * S5P_FIMV_NUM_PIXELS_IN_MB_COL) * (mbY * S5P_FIMV_NUM_PIXELS_IN_MB_ROW));
-}
-
-static int
-_calc_yplane_nv12(int width, int height)
-{
-    int mbX, mbY;
-
-    mbX = SIZE_ALIGN(width + 24, S5P_FIMV_NV12MT_HALIGN);
-    mbY = SIZE_ALIGN(height + 16, S5P_FIMV_NV12MT_VALIGN);
-
-    return SIZE_ALIGN(mbX * mbY, S5P_FIMV_DEC_BUF_ALIGN);;
-}
-
-static int
-_calc_uvplane_nv12(int width, int height)
-{
-    int mbX, mbY;
-
-    mbX = SIZE_ALIGN(width + 16, S5P_FIMV_NV12MT_HALIGN);
-    mbY = SIZE_ALIGN(height + 4, S5P_FIMV_NV12MT_VALIGN);
-
-    return SIZE_ALIGN((mbX * mbY) >> 1, S5P_FIMV_DEC_BUF_ALIGN);;
-}
-
-static int
-_new_calc_yplane_nv12(int width, int height)
-{
-    return SIZE_ALIGN (_new_calc_plane_nv12(width, height) + S5P_FIMV_D_ALIGN_PLANE_SIZE,
-          TBM_SURFACE_ALIGNMENT_PLANE_NV12);
-}
-
-static int
-_new_calc_uvplane_nv12(int width, int height)
-{
-    return SIZE_ALIGN((_new_calc_plane_nv12(width, height) >> 1) + S5P_FIMV_D_ALIGN_PLANE_SIZE,
-          TBM_SURFACE_ALIGNMENT_PLANE_NV12);
-}
 
 /**
  * @brief get the plane data of the surface.
@@ -1490,14 +1243,14 @@ tbm_exynos_surface_get_plane_data(tbm_surface_h surface, int width, int height, 
             {
                 _offset = 0;
 				_pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
-                _size = MAX(_calc_yplane_nv12(width, height), _new_calc_yplane_nv12(width, height));
+                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
             }
             else if( plane_idx ==1 )
             {
                 _offset = 0;
 				_pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
-				_size = MAX(_calc_uvplane_nv12(width, height), _new_calc_uvplane_nv12(width, height));
+				_size = SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 1;
             }
             break;
@@ -1827,19 +1580,6 @@ tbm_exynos_surface_get_size(tbm_surface_h surface, int width, int height, tbm_fo
         * index 1 = Cb:Cr plane, [15:0] Cb:Cr little endian
         */
         case TBM_FORMAT_NV12:
-			bpp = 12;
-			 //plane_idx == 0
-			 {
-				 _pitch = SIZE_ALIGN(width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
-				 _size = MAX(_calc_yplane_nv12(width,height), _new_calc_yplane_nv12(width,height));
-			 }
-			 //plane_idx ==1
-			 {
-				 _pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
-				 _size += MAX(_calc_uvplane_nv12(width,height), _new_calc_uvplane_nv12(width,height));
-			 }
-			 break;
-
         case TBM_FORMAT_NV21:
 			bpp = 12;
 			 //plane_idx == 0
@@ -1854,6 +1594,7 @@ tbm_exynos_surface_get_size(tbm_surface_h surface, int width, int height, tbm_fo
 			 }
 			 break;
 
+            break;
         case TBM_FORMAT_NV16:
         case TBM_FORMAT_NV61:
             bpp = 16;
@@ -1992,18 +1733,6 @@ tbm_exynos_fd_to_handle(tbm_bufmgr bufmgr, tbm_fd fd, int device)
     return bo_handle;
 }
 
-int
-tbm_exynos_bo_get_flags (tbm_bo bo)
-{
-    EXYNOS_RETURN_VAL_IF_FAIL (bo != NULL, 0);
-
-    tbm_bo_exynos bo_exynos;
-
-    bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
-    EXYNOS_RETURN_VAL_IF_FAIL (bo_exynos != NULL, 0);
-
-    return bo_exynos->flags_tbm;
-}
 
 MODULEINITPPROTO (init_tbm_bufmgr_priv);
 
@@ -2021,9 +1750,17 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 {
     tbm_bufmgr_exynos bufmgr_exynos;
     tbm_bufmgr_backend bufmgr_backend;
+    uint64_t cap = 0;
+    uint32_t ret;
 
     if (!bufmgr)
         return 0;
+
+    ret = drmGetCap(fd, DRM_CAP_DUMB_BUFFER, &cap);
+    if (ret || cap == 0) {
+        TBM_EXYNOS_LOG ("error: drm dumb buffer isn't supported !\n");
+        return 0;
+    }
 
     bufmgr_exynos = calloc (1, sizeof(struct _tbm_bufmgr_exynos));
     if (!bufmgr_exynos)
@@ -2032,28 +1769,7 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
         return 0;
     }
 
-    if (_is_drm_master(fd))
-    {
-        bufmgr_exynos->fd = fd;
-        bufmgr_exynos->fd_owner = 0;
-        DBG ("[%s] Display server use drm master fd:%d\n", target_name(), fd);
-    }
-    else
-    {
-        bufmgr_exynos->fd = _get_render_node();
-        if (bufmgr_exynos->fd < 0)
-        {
-            bufmgr_exynos->fd = fd;
-            bufmgr_exynos->fd_owner = 0;
-            TBM_EXYNOS_LOG ("[%s] get render node failed, use drm node:%d\n", target_name(), fd);
-        }
-        else
-        {
-            bufmgr_exynos->fd_owner = 1;
-            DBG ("[%s] Use render node:%d\n", target_name(), fd);
-        }
-    }
-
+    bufmgr_exynos->fd = fd;
     if (bufmgr_exynos->fd < 0)
     {
         TBM_EXYNOS_LOG ("error: Fail to create drm!\n");
@@ -2084,10 +1800,6 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
         TBM_EXYNOS_LOG ("error: Fail to create drm!\n");
         if (bufmgr_exynos->hashBos)
             drmHashDestroy (bufmgr_exynos->hashBos);
-
-        if (bufmgr_exynos->fd_owner)
-            close (bufmgr_exynos->fd);
-
         free (bufmgr_exynos);
         return 0;
     }
@@ -2111,14 +1823,7 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
     bufmgr_backend->surface_supported_format = tbm_exynos_surface_supported_format;
     bufmgr_backend->fd_to_handle = tbm_exynos_fd_to_handle;
     bufmgr_backend->surface_get_num_bos = tbm_exynos_surface_get_num_bos;
-    bufmgr_backend->bo_get_flags = tbm_exynos_bo_get_flags;
 
-#ifdef ALWAYS_BACKEND_CTRL
-    bufmgr_backend->flags = (TBM_LOCK_CTRL_BACKEND | TBM_CACHE_CTRL_BACKEND);
-    bufmgr_backend->bo_lock = NULL;
-    bufmgr_backend->bo_lock2 = tbm_exynos_bo_lock;
-    bufmgr_backend->bo_unlock = tbm_exynos_bo_unlock;
-#else
     if (bufmgr_exynos->use_dma_fence)
     {
         bufmgr_backend->flags = (TBM_LOCK_CTRL_BACKEND | TBM_CACHE_CTRL_BACKEND);
@@ -2132,16 +1837,11 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
         bufmgr_backend->bo_lock = NULL;
         bufmgr_backend->bo_unlock = NULL;
     }
-#endif /* ALWAYS_BACKEND_CTRL */
 
     if (!tbm_backend_init (bufmgr, bufmgr_backend))
     {
         TBM_EXYNOS_LOG ("error: Fail to init backend!\n");
         tbm_backend_free (bufmgr_backend);
-
-        if (bufmgr_exynos->fd_owner)
-            close (bufmgr_exynos->fd);
-
         free (bufmgr_exynos);
         return 0;
     }
