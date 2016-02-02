@@ -1,25 +1,24 @@
-Name:           libtbm-exynos
-Version:        1.2.1
+Name:           libtbm-dumb
+Version:        1.0.9
 Release:        1
 License:        MIT
-Summary:        Tizen Buffer Manager - exynos backend
+Summary:        Tizen Buffer Manager - drm dumb backend
 Group:          System/Libraries
 ExcludeArch:    i586
 Source0:        %{name}-%{version}.tar.gz
+Source1001:	%name.manifest
 
 BuildRequires:  pkgconfig(pthread-stubs)
 BuildRequires:  pkgconfig(libdrm)
-BuildRequires:  pkgconfig(libdrm_exynos)
 BuildRequires:  pkgconfig(libtbm)
 BuildRequires:  pkgconfig(dlog)
-BuildRequires:  pkgconfig(libudev)
 
 %description
-descriptionion: Tizen Buffer manager backend module for exynos
+descriptionion: Tizen Buffer manager backend module uses drm dumb
 
 %prep
 %setup -q
-
+cp %{SOURCE1001} .
 %build
 
 %reconfigure --prefix=%{_prefix} --libdir=%{_libdir}/bufmgr --disable-cachectrl \
@@ -38,11 +37,12 @@ cp -af COPYING %{buildroot}/usr/share/license/%{name}
 if [ -f %{_libdir}/bufmgr/libtbm_default.so ]; then
     rm -rf %{_libdir}/bufmgr/libtbm_default.so
 fi
-ln -s libtbm_exynos.so %{_libdir}/bufmgr/libtbm_default.so
+ln -s libtbm_dumb.so %{_libdir}/bufmgr/libtbm_default.so
 
 %postun -p /sbin/ldconfig
 
 %files
+%manifest %{name}.manifest
 %{_libdir}/bufmgr/libtbm_*.so*
 /usr/share/license/%{name}
 
