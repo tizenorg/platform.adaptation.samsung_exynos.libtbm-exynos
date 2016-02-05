@@ -301,7 +301,7 @@ tbm_shm_bo_free(tbm_bo bo)
     bo_shm = (tbm_bo_shm)tbm_backend_get_bo_priv(bo);
     SHM_RETURN_IF_FAIL (bo_shm!=NULL);
 
-    DBG ("      [%s] bo:%p, gem:%d(%d), size:%d\n",target_name(),
+    DBG ("      [%s] bo:%p, shm:%d(%d), size:%d\n",target_name(),
          bo,
          bo_shm->shmid, bo_shm->key,
          bo_shm->size);
@@ -1108,7 +1108,7 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
     bufmgr_backend->fd_to_handle = NULL;
     bufmgr_backend->surface_get_num_bos = tbm_shm_surface_get_num_bos;
 
-    bufmgr_backend->flags = 0;
+    bufmgr_backend->flags = TBM_CACHE_CTRL_BACKEND;
     bufmgr_backend->bo_lock = NULL;
     bufmgr_backend->bo_unlock = NULL;
 
