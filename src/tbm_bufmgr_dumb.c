@@ -622,10 +622,12 @@ tbm_dumb_bo_import_fd (tbm_bo bo, tbm_fd key)
     DUMB_RETURN_VAL_IF_FAIL (bufmgr_dumb!=NULL, 0);
 
     unsigned int gem = 0;
+    unsigned int name = 0;
     unsigned int real_size = -1;
 
 	//getting handle from fd
     struct drm_prime_handle arg = {0, };
+    struct drm_gem_open gem_open = {0, };
 
 	arg.fd = key;
 	arg.flags = 0;
@@ -637,6 +639,30 @@ tbm_dumb_bo_import_fd (tbm_bo bo, tbm_fd key)
     }
     gem = arg.handle;
 
+    name = _get_name(bufmgr_dumb->fd, gem);
+    if (name == 0)
+    {
+        TBM_DUMB_LOG ("error bo:%p Cannot get name from gem:%d, fd:%d (%s)\n",
+            bo, gem, key, strerror(errno));
+        return 0;
+    }    
+
+    /* Open the same GEM object only for finding out its size */
+    gem_open.name = name;
+    if (drmIoctl(bufmgr_dumb->fd, DRM_IOCTL_GEM_OPEN, &gem_open))
+    {
+        TBM_DUMB_LOG ("error Cannot open gem name=%d\n", key);
+        return 0;
+    }
+    /* Free gem handle to avoid a memory leak*/
+    struct drm_gem_close gem_close;
+    gem_close.handle = gem_open.handle;
+    if (drmIoctl (bufmgr_dumb->fd, DRM_IOCTL_GEM_CLOSE, &gem_close))
+    {
+        TBM_DUMB_LOG ("error bo:%p fail to gem close.(%s)\n",
+            bo, strerror(errno));
+    }
+
 	/* Determine size of bo.  The fd-to-handle ioctl really should
 	 * return the size, but it doesn't.  If we have kernel 3.12 or
 	 * later, we can lseek on the prime fd to get the size.  Older
@@ -644,8 +670,9 @@ tbm_dumb_bo_import_fd (tbm_bo bo, tbm_fd key)
 	 * provided (estimated or guess size). */
 	real_size = lseek(key, 0, SEEK_END);
 
-    if (real_size == -1)
-        return 0;
+    if (real_size == -1) {
+        real_size = gem_open.size;
+    }
 
     bo_dumb = calloc (1, sizeof(struct _tbm_bo_dumb));
     if (!bo_dumb)
@@ -656,18 +683,11 @@ tbm_dumb_bo_import_fd (tbm_bo bo, tbm_fd key)
 
     bo_dumb->fd = bufmgr_dumb->fd;
     bo_dumb->gem = gem;
+    bo_dumb->dmabuf = key;
     bo_dumb->size = real_size;
     bo_dumb->flags_dumb = 0;
     bo_dumb->flags_tbm = _get_tbm_flag_from_dumb (bo_dumb->flags_dumb);
-
-    bo_dumb->name = _get_name(bo_dumb->fd, bo_dumb->gem);
-    if (!bo_dumb->name)
-    {
-        TBM_DUMB_LOG ("error bo:%p Cannot get name from gem:%d, fd:%d (%s)\n",
-            bo, gem, key, strerror(errno));
-        free (bo_dumb);
-        return 0;
-    }
+    bo_dumb->name = name;
 
     /* add bo to hash */
     PrivGem *privGem = NULL;
