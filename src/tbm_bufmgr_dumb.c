@@ -56,7 +56,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define TBM_COLOR_FORMAT_COUNT 8
 
 #ifdef DEBUG
-#define LOG_TAG	"TBM_BACKEND"
+#define LOG_TAG    "TBM_BACKEND"
 #include <dlog.h>
 static int bDebug=0;
 
@@ -64,7 +64,7 @@ char* target_name()
 {
     FILE *f;
     char *slash;
-    static int 	initialized = 0;
+    static int     initialized = 0;
     static char app_name[128];
 
     if ( initialized )
@@ -126,29 +126,29 @@ char* target_name()
 }
 
 struct dma_buf_info {
-	unsigned long	size;
-	unsigned int	fence_supported;
-	unsigned int	padding;
+    unsigned long   size;
+    unsigned int    fence_supported;
+    unsigned int    padding;
 };
 
-#define DMA_BUF_ACCESS_READ		0x1
-#define DMA_BUF_ACCESS_WRITE		0x2
-#define DMA_BUF_ACCESS_DMA		0x4
-#define DMA_BUF_ACCESS_MAX		0x8
+#define DMA_BUF_ACCESS_READ     0x1
+#define DMA_BUF_ACCESS_WRITE    0x2
+#define DMA_BUF_ACCESS_DMA      0x4
+#define DMA_BUF_ACCESS_MAX      0x8
 
-#define DMA_FENCE_LIST_MAX 		5
+#define DMA_FENCE_LIST_MAX      5
 
 struct dma_buf_fence {
-	unsigned long		ctx;
-	unsigned int		type;
+    unsigned long       ctx;
+    unsigned int        type;
 };
 
-#define DMABUF_IOCTL_BASE	'F'
-#define DMABUF_IOWR(nr, type)	_IOWR(DMABUF_IOCTL_BASE, nr, type)
+#define DMABUF_IOCTL_BASE    'F'
+#define DMABUF_IOWR(nr, type)   _IOWR(DMABUF_IOCTL_BASE, nr, type)
 
-#define DMABUF_IOCTL_GET_INFO	DMABUF_IOWR(0x00, struct dma_buf_info)
-#define DMABUF_IOCTL_GET_FENCE	DMABUF_IOWR(0x01, struct dma_buf_fence)
-#define DMABUF_IOCTL_PUT_FENCE	DMABUF_IOWR(0x02, struct dma_buf_fence)
+#define DMABUF_IOCTL_GET_INFO   DMABUF_IOWR(0x00, struct dma_buf_info)
+#define DMABUF_IOCTL_GET_FENCE  DMABUF_IOWR(0x01, struct dma_buf_fence)
+#define DMABUF_IOCTL_PUT_FENCE  DMABUF_IOWR(0x02, struct dma_buf_fence)
 
 typedef struct _tbm_bufmgr_dumb *tbm_bufmgr_dumb;
 typedef struct _tbm_bo_dumb *tbm_bo_dumb;
@@ -188,7 +188,6 @@ struct _tbm_bo_dumb
 struct _tbm_bufmgr_dumb
 {
     int fd;
-    int isLocal;
     void* hashBos;
 
     int use_dma_fence;
@@ -215,13 +214,13 @@ char *STR_OPT[]=
 
 
 uint32_t tbm_dumb_color_format_list[TBM_COLOR_FORMAT_COUNT] = {   TBM_FORMAT_RGBA8888,
-																		TBM_FORMAT_BGRA8888,
-																		TBM_FORMAT_RGBX8888,
-																		TBM_FORMAT_RGB888,
-																		TBM_FORMAT_NV12,
-																		TBM_FORMAT_NV21,
-																		TBM_FORMAT_YUV420,
-																		TBM_FORMAT_YVU420 };
+                                                                        TBM_FORMAT_BGRA8888,
+                                                                        TBM_FORMAT_RGBX8888,
+                                                                        TBM_FORMAT_RGB888,
+                                                                        TBM_FORMAT_NV12,
+                                                                        TBM_FORMAT_NV21,
+                                                                        TBM_FORMAT_YUV420,
+                                                                        TBM_FORMAT_YVU420 };
 
 
 static unsigned int
@@ -236,7 +235,6 @@ _get_tbm_flag_from_dumb (unsigned int fdumb)
 {
     unsigned int flags = 0;
 
-    flags |= TBM_BO_DEFAULT;
     flags |= TBM_BO_SCANOUT;
     flags |= TBM_BO_NONCACHABLE;
 
@@ -297,12 +295,6 @@ _dumb_bo_handle (tbm_bo_dumb bo_dumb, int device)
         break;
     case TBM_DEVICE_3D:
 #ifdef USE_DMAIMPORT
-        if (bo_dumb->dmabuf)
-        {
-            bo_handle.u32 = (uint32_t)bo_dumb->dmabuf;
-            break;
-        }
-
         if (!bo_dumb->dmabuf)
         {
             struct drm_prime_handle arg = {0, };
@@ -344,16 +336,14 @@ _dumb_bo_handle (tbm_bo_dumb bo_dumb, int device)
     return bo_handle;
 }
 
+#ifdef USE_CACHE
 static int
 _dumb_cache_flush (int fd, tbm_bo_dumb bo_dumb, int flags)
 {
-#ifdef ENABLE_CACHECRTL
-    TBM_DUMB_LOG ("warning fail to enable the cache flush.\n");
-#else
-    TBM_DUMB_LOG ("warning fail to enable the cache flush.\n");
-#endif
+    TBM_DUMB_LOG ("warning fail to flush the cache.\n");
     return 1;
 }
+#endif
 
 static int
 tbm_dumb_bo_size (tbm_bo bo)
@@ -404,7 +394,7 @@ tbm_dumb_bo_alloc (tbm_bo bo, int size, int flags)
 
     bo_dumb->fd = bufmgr_dumb->fd;
     bo_dumb->gem = arg.handle;
-    bo_dumb->size = size;
+    bo_dumb->size = arg.size;
     bo_dumb->flags_tbm = flags;
     bo_dumb->flags_dumb = dumb_flags;
     bo_dumb->name = _get_name (bo_dumb->fd, bo_dumb->gem);
@@ -585,9 +575,7 @@ tbm_dumb_bo_import (tbm_bo bo, unsigned int key)
         privGem = calloc (1, sizeof(PrivGem));
         if (!privGem)
         {
-            TBM_DUMB_LOG ("[libtbm-dumb:%d] "
-                    "error %s:%d Fail to calloc privGem\n",
-                    getpid(), __FUNCTION__, __LINE__);
+            TBM_DUMB_LOG ("error Fail to calloc privGem\n");
             free (bo_dumb);
             return 0;
         }
@@ -628,12 +616,12 @@ tbm_dumb_bo_import_fd (tbm_bo bo, tbm_fd key)
     unsigned int name = 0;
     unsigned int real_size = -1;
 
-	//getting handle from fd
+    //getting handle from fd
     struct drm_prime_handle arg = {0, };
     struct drm_gem_open gem_open = {0, };
 
-	arg.fd = key;
-	arg.flags = 0;
+    arg.fd = key;
+    arg.flags = 0;
     if (drmIoctl (bufmgr_dumb->fd, DRM_IOCTL_PRIME_FD_TO_HANDLE, &arg))
     {
         TBM_DUMB_LOG ("error bo:%p Cannot get gem handle from fd:%d (%s)\n",
@@ -641,6 +629,13 @@ tbm_dumb_bo_import_fd (tbm_bo bo, tbm_fd key)
         return NULL;
     }
     gem = arg.handle;
+
+    /* Determine size of bo.  The fd-to-handle ioctl really should
+     * return the size, but it doesn't.  If we have kernel 3.12 or
+     * later, we can lseek on the prime fd to get the size.  Older
+     * kernels will just fail, in which case we fall back to the
+     * provided (estimated or guess size). */
+    real_size = lseek(key, 0, SEEK_END);
 
     name = _get_name(bufmgr_dumb->fd, gem);
     if (name == 0)
@@ -666,16 +661,8 @@ tbm_dumb_bo_import_fd (tbm_bo bo, tbm_fd key)
             bo, strerror(errno));
     }
 
-	/* Determine size of bo.  The fd-to-handle ioctl really should
-	 * return the size, but it doesn't.  If we have kernel 3.12 or
-	 * later, we can lseek on the prime fd to get the size.  Older
-	 * kernels will just fail, in which case we fall back to the
-	 * provided (estimated or guess size). */
-	real_size = lseek(key, 0, SEEK_END);
-
-    if (real_size == -1) {
+    if (real_size == -1)
         real_size = gem_open.size;
-    }
 
     bo_dumb = calloc (1, sizeof(struct _tbm_bo_dumb));
     if (!bo_dumb)
@@ -706,9 +693,7 @@ tbm_dumb_bo_import_fd (tbm_bo bo, tbm_fd key)
         privGem = calloc (1, sizeof(PrivGem));
         if (!privGem)
         {
-            TBM_DUMB_LOG ("[libtbm-dumb:%d] "
-                    "error %s:%d Fail to calloc privGem\n",
-                    getpid(), __FUNCTION__, __LINE__);
+            TBM_DUMB_LOG ("error Fail to calloc privGem\n");
             free (bo_dumb);
             return 0;
         }
@@ -770,21 +755,23 @@ tbm_dumb_bo_export (tbm_bo bo)
 tbm_fd
 tbm_dumb_bo_export_fd (tbm_bo bo)
 {
-    DUMB_RETURN_VAL_IF_FAIL (bo!=NULL, 0);
+    DUMB_RETURN_VAL_IF_FAIL (bo!=NULL, -1);
 
     tbm_bo_dumb bo_dumb;
+    int ret;
 
     bo_dumb = (tbm_bo_dumb)tbm_backend_get_bo_priv(bo);
-    DUMB_RETURN_VAL_IF_FAIL (bo_dumb!=NULL, 0);
+    DUMB_RETURN_VAL_IF_FAIL (bo_dumb!=NULL, -1);
 
     struct drm_prime_handle arg = {0, };
 
     arg.handle = bo_dumb->gem;
-    if (drmIoctl (bo_dumb->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg))
+    ret = drmIoctl (bo_dumb->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg);
+    if (ret)
     {
         TBM_DUMB_LOG ("error bo:%p Cannot dmabuf=%d (%s)\n",
             bo, bo_dumb->gem, strerror(errno));
-        return (tbm_fd) 0;
+        return (tbm_fd) ret;
     }
 
     DBG (" [%s] bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d(%d), size:%d\n", target_name(),
@@ -907,8 +894,10 @@ tbm_dumb_bo_cache_flush (tbm_bo bo, int flags)
     bo_dumb = (tbm_bo_dumb)tbm_backend_get_bo_priv(bo);
     DUMB_RETURN_VAL_IF_FAIL (bo_dumb!=NULL, 0);
 
+#ifdef USE_CACHE
     if (!_dumb_cache_flush(bo_dumb->fd, bo_dumb, flags))
         return 0;
+#endif
 
     return 1;
 }
@@ -939,6 +928,7 @@ tbm_dumb_bo_lock(tbm_bo bo, int device, int opt)
 {
     DUMB_RETURN_VAL_IF_FAIL (bo!=NULL, 0);
 
+#if USE_BACKEND_LOCK
     tbm_bufmgr_dumb bufmgr_dumb;
     tbm_bo_dumb bo_dumb;
     struct dma_buf_fence fence;
@@ -948,7 +938,7 @@ tbm_dumb_bo_lock(tbm_bo bo, int device, int opt)
     if (device != TBM_DEVICE_3D && device != TBM_DEVICE_CPU)
     {
         DBG ("[libtbm-dumb:%d] %s not support device type,\n", getpid(), __FUNCTION__);
-	    return 0;
+        return 0;
     }
 
     bo_dumb = (tbm_bo_dumb)tbm_backend_get_bo_priv(bo);
@@ -992,21 +982,22 @@ tbm_dumb_bo_lock(tbm_bo bo, int device, int opt)
             TBM_DUMB_LOG ("error Cannot set GET FENCE(%s)\n", strerror(errno) );
             return 0;
         }
-    } else
+    }
+    else
     {
-	if (opt & TBM_OPTION_WRITE)
-	    filelock.l_type = F_WRLCK;
-	else
-	    filelock.l_type = F_RDLCK;
+        if (opt & TBM_OPTION_WRITE)
+            filelock.l_type = F_WRLCK;
+        else
+            filelock.l_type = F_RDLCK;
 
-	filelock.l_whence = SEEK_CUR;
-	filelock.l_start = 0;
-	filelock.l_len = 0;
+        filelock.l_whence = SEEK_CUR;
+        filelock.l_start = 0;
+        filelock.l_len = 0;
 
-	if (-1 == fcntl(bo_dumb->dmabuf, F_SETLKW, &filelock))
+        if (-1 == fcntl(bo_dumb->dmabuf, F_SETLKW, &filelock))
         {
-	    return 0;
-	}
+            return 0;
+        }
     }
 
     pthread_mutex_lock(&bo_dumb->mutex);
@@ -1038,6 +1029,7 @@ tbm_dumb_bo_lock(tbm_bo bo, int device, int opt)
           bo_dumb->gem, bo_dumb->name,
           bo_dumb->dmabuf);
 
+#endif
     return 1;
 }
 
@@ -1046,6 +1038,7 @@ tbm_dumb_bo_unlock(tbm_bo bo)
 {
     DUMB_RETURN_VAL_IF_FAIL (bo!=NULL, 0);
 
+#if USE_BACKEND_LOCK
     tbm_bo_dumb bo_dumb;
     struct dma_buf_fence fence;
     struct flock filelock;
@@ -1056,17 +1049,17 @@ tbm_dumb_bo_unlock(tbm_bo bo)
     DUMB_RETURN_VAL_IF_FAIL (bo_dumb!=NULL, 0);
 
     if (bo_dumb->dma_fence[0].type & DMA_BUF_ACCESS_DMA)
-	    dma_type = 1;
+        dma_type = 1;
 
     if (!bo_dumb->dma_fence[0].ctx && dma_type)
     {
-        DBG ("[libtbm-dumb:%d] %s FENCE not support or ignored,\n", getpid(), __FUNCTION__);
+        DBG ("error FENCE not support or ignored,\n");
         return 0;
     }
 
     if (!bo_dumb->dma_fence[0].ctx && dma_type)
     {
-        DBG ("[libtbm-dumb:%d] %s device type is not 3D/CPU,\n", getpid(), __FUNCTION__);
+        DBG ("error device type is not 3D/CPU,\n");
         return 0;
     }
 
@@ -1095,17 +1088,18 @@ tbm_dumb_bo_unlock(tbm_bo bo)
             TBM_DUMB_LOG ("error Can not set PUT FENCE(%s)\n", strerror(errno));
             return 0;
         }
-    } else
+    }
+    else
     {
         filelock.l_type = F_UNLCK;
-	filelock.l_whence = SEEK_CUR;
-	filelock.l_start = 0;
-	filelock.l_len = 0;
+        filelock.l_whence = SEEK_CUR;
+        filelock.l_start = 0;
+        filelock.l_len = 0;
 
-	if (-1 == fcntl(bo_dumb->dmabuf, F_SETLKW, &filelock))
+        if (-1 == fcntl(bo_dumb->dmabuf, F_SETLKW, &filelock))
         {
-	    return 0;
-	}
+            return 0;
+        }
     }
 
     DBG ("[%s] DMABUF_IOCTL_PUT_FENCE! bo:%p, gem:%d(%d), fd:%ds\n", target_name(),
@@ -1113,6 +1107,7 @@ tbm_dumb_bo_unlock(tbm_bo bo)
           bo_dumb->gem, bo_dumb->name,
           bo_dumb->dmabuf);
 
+#endif
     return 1;
 }
 
@@ -1141,7 +1136,7 @@ tbm_dumb_bufmgr_deinit (void *priv)
     }
 
     if (bufmgr_dumb->fd_owner)
-        close(bufmgr_dumb->fd);
+        close (bufmgr_dumb->fd);
 
     free (bufmgr_dumb);
 }
@@ -1162,8 +1157,6 @@ tbm_dumb_surface_supported_format(uint32_t **formats, uint32_t *num)
 
     *formats = color_formats;
     *num = TBM_COLOR_FORMAT_COUNT;
-
-    fprintf (stderr, "tbm_dumb_surface_supported_format  count = %d \n",*num);
 
     return 1;
 }
@@ -1214,7 +1207,7 @@ tbm_dumb_surface_get_plane_data(tbm_surface_h surface, int width, int height, tb
         case TBM_FORMAT_RGB565:
             bpp = 16;
             _offset = 0;
-			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
+            _pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
             _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             _bo_idx = 0;
             break;
@@ -1223,7 +1216,7 @@ tbm_dumb_surface_get_plane_data(tbm_surface_h surface, int width, int height, tb
         case TBM_FORMAT_BGR888:
             bpp = 24;
             _offset = 0;
-			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
+            _pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
             _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             _bo_idx = 0;
             break;
@@ -1238,7 +1231,7 @@ tbm_dumb_surface_get_plane_data(tbm_surface_h surface, int width, int height, tb
         case TBM_FORMAT_BGRA8888:
             bpp = 32;
             _offset = 0;
-			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
+            _pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
             _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             _bo_idx = 0;
             break;
@@ -1251,7 +1244,7 @@ tbm_dumb_surface_get_plane_data(tbm_surface_h surface, int width, int height, tb
         case TBM_FORMAT_AYUV:
             bpp = 32;
             _offset = 0;
-			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+            _pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
             _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             _bo_idx = 0;
             break;
@@ -1264,56 +1257,40 @@ tbm_dumb_surface_get_plane_data(tbm_surface_h surface, int width, int height, tb
         * index 1 = Cb:Cr plane, [15:0] Cb:Cr little endian
         */
         case TBM_FORMAT_NV12:
-            bpp = 12;
-            if(plane_idx == 0)
-            {
-                _offset = 0;
-				_pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
-                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
-                _bo_idx = 0;
-            }
-            else if( plane_idx ==1 )
-            {
-                _offset = 0;
-				_pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
-				_size = SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
-                _bo_idx = 1;
-            }
-            break;
         case TBM_FORMAT_NV21:
             bpp = 12;
             if(plane_idx == 0)
             {
                 _offset = 0;
-				_pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
             }
             else if( plane_idx ==1 )
             {
                 _offset = width*height;
-				_pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
-				_size = SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
+                _pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _size = SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
             }
             break;
 
         case TBM_FORMAT_NV16:
         case TBM_FORMAT_NV61:
-			bpp = 16;
+            bpp = 16;
             //if(plane_idx == 0)
             {
                 _offset = 0;
-		_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
-		if(plane_idx == 0)
-			break;
+                if(plane_idx == 0)
+                    break;
             }
             //else if( plane_idx ==1 )
             {
                 _offset += _size;
-		_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
             }
@@ -1335,7 +1312,6 @@ tbm_dumb_surface_get_plane_data(tbm_surface_h surface, int width, int height, tb
         case TBM_FORMAT_YUV410:
         case TBM_FORMAT_YVU410:
             bpp = 9;
-            _bo_idx = 0;
             break;
         case TBM_FORMAT_YUV411:
         case TBM_FORMAT_YVU411:
@@ -1345,25 +1321,25 @@ tbm_dumb_surface_get_plane_data(tbm_surface_h surface, int width, int height, tb
             //if(plane_idx == 0)
             {
                 _offset = 0;
-		        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
-		        if(plane_idx == 0)
-			        break;
+                if(plane_idx == 0)
+                    break;
             }
             //else if( plane_idx == 1 )
             {
                 _offset += _size;
-		        _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
-		        _size = SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
+                _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _size = SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
-		        if(plane_idx == 1)
-			        break;
+                if(plane_idx == 1)
+                    break;
             }
             //else if (plane_idx == 2 )
             {
                 _offset += _size;
-		        _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
                 _size = SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
             }
@@ -1374,25 +1350,25 @@ tbm_dumb_surface_get_plane_data(tbm_surface_h surface, int width, int height, tb
             //if(plane_idx == 0)
             {
                 _offset = 0;
-		        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
-		        if(plane_idx == 0)
-			        break;
+                if(plane_idx == 0)
+                    break;
             }
             //else if( plane_idx == 1 )
             {
                 _offset += _size;
-		        _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
-		        _size = SIZE_ALIGN(_pitch*(height),TBM_SURFACE_ALIGNMENT_PLANE);
+                _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _size = SIZE_ALIGN(_pitch*(height),TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
-		        if(plane_idx == 1)
-			        break;
+                if(plane_idx == 1)
+                    break;
             }
             //else if (plane_idx == 2 )
             {
                 _offset += _size;
-		        _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
                 _size = SIZE_ALIGN(_pitch*(height),TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
             }
@@ -1403,25 +1379,25 @@ tbm_dumb_surface_get_plane_data(tbm_surface_h surface, int width, int height, tb
             //if(plane_idx == 0)
             {
                 _offset = 0;
-		        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
-		        if(plane_idx == 0)
-			        break;
+                if(plane_idx == 0)
+                    break;
             }
             //else if( plane_idx == 1 )
             {
                 _offset += _size;
-		        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
-		        if(plane_idx == 1)
-			        break;
+                if(plane_idx == 1)
+                    break;
             }
             //else if (plane_idx == 2 )
             {
                 _offset += _size;
-  		        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
                _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
                _bo_idx = 0;
             }
@@ -1442,7 +1418,7 @@ tbm_dumb_surface_get_plane_data(tbm_surface_h surface, int width, int height, tb
 int
 tbm_dumb_surface_get_num_bos(tbm_format format)
 {
-	int num = 0;
+    int num = 0;
 
     switch(format)
     {
@@ -1538,11 +1514,11 @@ tbm_dumb_surface_get_num_bos(tbm_format format)
 int
 tbm_dumb_surface_get_size(tbm_surface_h surface, int width, int height, tbm_format format)
 {
-	int ret = 0;
-	int bpp = 0;
-	int _pitch =0;
-	int _size =0;
-	int align =TBM_SURFACE_ALIGNMENT_PLANE;
+    int ret = 0;
+    int bpp = 0;
+    int _pitch =0;
+    int _size =0;
+    int align =TBM_SURFACE_ALIGNMENT_PLANE;
 
     switch(format)
     {
@@ -1565,14 +1541,14 @@ tbm_dumb_surface_get_size(tbm_surface_h surface, int width, int height, tbm_form
         case TBM_FORMAT_BGRA5551:
         case TBM_FORMAT_RGB565:
             bpp = 16;
-			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
+            _pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
             _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             break;
         /* 24 bpp RGB */
         case TBM_FORMAT_RGB888:
         case TBM_FORMAT_BGR888:
             bpp = 24;
-			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
+            _pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
             _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             break;
         /* 32 bpp RGB */
@@ -1585,7 +1561,7 @@ tbm_dumb_surface_get_size(tbm_surface_h surface, int width, int height, tbm_form
         case TBM_FORMAT_RGBA8888:
         case TBM_FORMAT_BGRA8888:
             bpp = 32;
-			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
+            _pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_RGB);
             _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             break;
         /* packed YCbCr */
@@ -1595,7 +1571,7 @@ tbm_dumb_surface_get_size(tbm_surface_h surface, int width, int height, tbm_form
         case TBM_FORMAT_VYUY:
         case TBM_FORMAT_AYUV:
             bpp = 32;
-			_pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+            _pitch = SIZE_ALIGN((width*bpp)>>3,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
             _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             break;
         /*
@@ -1607,18 +1583,18 @@ tbm_dumb_surface_get_size(tbm_surface_h surface, int width, int height, tbm_form
         */
         case TBM_FORMAT_NV12:
         case TBM_FORMAT_NV21:
-			bpp = 12;
-			 //plane_idx == 0
-			 {
-				 _pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
-				 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
-			 }
-			 //plane_idx ==1
-			 {
-				 _pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
-				 _size += SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
-			 }
-			 break;
+            bpp = 12;
+             //plane_idx == 0
+             {
+                 _pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+             }
+             //plane_idx ==1
+             {
+                 _pitch = SIZE_ALIGN( width ,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                 _size += SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
+             }
+             break;
 
             break;
         case TBM_FORMAT_NV16:
@@ -1626,12 +1602,12 @@ tbm_dumb_surface_get_size(tbm_surface_h surface, int width, int height, tbm_form
             bpp = 16;
             //plane_idx == 0
             {
-				_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             }
             //plane_idx ==1
             {
-			    _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
                 _size += SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             }
 
@@ -1648,26 +1624,26 @@ tbm_dumb_surface_get_size(tbm_surface_h surface, int width, int height, tbm_form
         case TBM_FORMAT_YUV410:
         case TBM_FORMAT_YVU410:
             bpp = 9;
-	    align = TBM_SURFACE_ALIGNMENT_PITCH_YUV;
+        align = TBM_SURFACE_ALIGNMENT_PITCH_YUV;
             break;
         case TBM_FORMAT_YUV411:
         case TBM_FORMAT_YVU411:
         case TBM_FORMAT_YUV420:
         case TBM_FORMAT_YVU420:
             bpp = 12;
-	    //plane_idx == 0
+            //plane_idx == 0
             {
-		_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             }
             //plane_idx == 1
             {
-		_pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
-		_size += SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
+                _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _size += SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
             }
             //plane_idx == 2
             {
-		_pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
                 _size += SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
             }
 
@@ -1675,26 +1651,26 @@ tbm_dumb_surface_get_size(tbm_surface_h surface, int width, int height, tbm_form
         case TBM_FORMAT_YUV422:
         case TBM_FORMAT_YVU422:
             bpp = 16;
-	    //plane_idx == 0
+            //plane_idx == 0
             {
-		_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+                _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             }
             //plane_idx == 1
             {
-		_pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
-		_size += SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+                _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _size += SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             }
             //plane_idx == 2
             {
-		_pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+                _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
                 _size += SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             }
             break;
         case TBM_FORMAT_YUV444:
         case TBM_FORMAT_YVU444:
             bpp = 24;
-	    align = TBM_SURFACE_ALIGNMENT_PITCH_YUV;
+            align = TBM_SURFACE_ALIGNMENT_PITCH_YUV;
             break;
 
         default:
@@ -1702,10 +1678,10 @@ tbm_dumb_surface_get_size(tbm_surface_h surface, int width, int height, tbm_form
             break;
     }
 
-	if(_size > 0)
-		ret = _size;
-	else
-	    ret =  SIZE_ALIGN( (width * height * bpp) >> 3, align);
+    if(_size > 0)
+        ret = _size;
+    else
+        ret =  SIZE_ALIGN( (width * height * bpp) >> 3, align);
 
     return ret;
 
@@ -1759,6 +1735,18 @@ tbm_dumb_fd_to_handle(tbm_bufmgr bufmgr, tbm_fd fd, int device)
     return bo_handle;
 }
 
+int
+tbm_dumb_bo_get_flags (tbm_bo bo)
+{
+    DUMB_RETURN_VAL_IF_FAIL (bo != NULL, 0);
+
+    tbm_bo_dumb bo_dumb;
+
+    bo_dumb = (tbm_bo_dumb)tbm_backend_get_bo_priv(bo);
+    DUMB_RETURN_VAL_IF_FAIL (bo_dumb != NULL, 0);
+
+    return bo_dumb->flags_tbm;
+}
 
 MODULEINITPPROTO (init_tbm_bufmgr_priv);
 
@@ -1860,6 +1848,7 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
     bufmgr_backend->surface_supported_format = tbm_dumb_surface_supported_format;
     bufmgr_backend->fd_to_handle = tbm_dumb_fd_to_handle;
     bufmgr_backend->surface_get_num_bos = tbm_dumb_surface_get_num_bos;
+    bufmgr_backend->bo_get_flags = tbm_dumb_bo_get_flags;
 
     if (bufmgr_dumb->use_dma_fence)
     {
