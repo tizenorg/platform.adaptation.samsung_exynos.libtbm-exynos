@@ -673,7 +673,7 @@ tbm_dumb_bo_import_fd (tbm_bo bo, tbm_fd key)
 
     bo_dumb->fd = bufmgr_dumb->fd;
     bo_dumb->gem = gem;
-    bo_dumb->dmabuf = key;
+    bo_dumb->dmabuf = 0;
     bo_dumb->size = real_size;
     bo_dumb->flags_dumb = 0;
     bo_dumb->flags_tbm = _get_tbm_flag_from_dumb (bo_dumb->flags_dumb);
