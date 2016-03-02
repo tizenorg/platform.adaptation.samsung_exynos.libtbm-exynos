@@ -1833,92 +1833,6 @@ tbm_exynos_surface_get_plane_data(tbm_surface_h surface, int width, int height,
 }
 
 int
-tbm_exynos_surface_get_num_bos(tbm_format format)
-{
-	int num = 0;
-
-	switch (format) {
-		/* 16 bpp RGB */
-	case TBM_FORMAT_XRGB4444:
-	case TBM_FORMAT_XBGR4444:
-	case TBM_FORMAT_RGBX4444:
-	case TBM_FORMAT_BGRX4444:
-	case TBM_FORMAT_ARGB4444:
-	case TBM_FORMAT_ABGR4444:
-	case TBM_FORMAT_RGBA4444:
-	case TBM_FORMAT_BGRA4444:
-	case TBM_FORMAT_XRGB1555:
-	case TBM_FORMAT_XBGR1555:
-	case TBM_FORMAT_RGBX5551:
-	case TBM_FORMAT_BGRX5551:
-	case TBM_FORMAT_ARGB1555:
-	case TBM_FORMAT_ABGR1555:
-	case TBM_FORMAT_RGBA5551:
-	case TBM_FORMAT_BGRA5551:
-	case TBM_FORMAT_RGB565:
-		/* 24 bpp RGB */
-	case TBM_FORMAT_RGB888:
-	case TBM_FORMAT_BGR888:
-		/* 32 bpp RGB */
-	case TBM_FORMAT_XRGB8888:
-	case TBM_FORMAT_XBGR8888:
-	case TBM_FORMAT_RGBX8888:
-	case TBM_FORMAT_BGRX8888:
-	case TBM_FORMAT_ARGB8888:
-	case TBM_FORMAT_ABGR8888:
-	case TBM_FORMAT_RGBA8888:
-	case TBM_FORMAT_BGRA8888:
-		/* packed YCbCr */
-	case TBM_FORMAT_YUYV:
-	case TBM_FORMAT_YVYU:
-	case TBM_FORMAT_UYVY:
-	case TBM_FORMAT_VYUY:
-	case TBM_FORMAT_AYUV:
-		/*
-		* 2 plane YCbCr
-		* index 0 = Y plane, [7:0] Y
-		* index 1 = Cr:Cb plane, [15:0] Cr:Cb little endian
-		* or
-		* index 1 = Cb:Cr plane, [15:0] Cb:Cr little endian
-		*/
-	case TBM_FORMAT_NV21:
-	case TBM_FORMAT_NV16:
-	case TBM_FORMAT_NV61:
-		/*
-		* 3 plane YCbCr
-		* index 0: Y plane, [7:0] Y
-		* index 1: Cb plane, [7:0] Cb
-		* index 2: Cr plane, [7:0] Cr
-		* or
-		* index 1: Cr plane, [7:0] Cr
-		* index 2: Cb plane, [7:0] Cb
-		*/
-	case TBM_FORMAT_YUV410:
-	case TBM_FORMAT_YVU410:
-	case TBM_FORMAT_YUV411:
-	case TBM_FORMAT_YVU411:
-	case TBM_FORMAT_YUV420:
-	case TBM_FORMAT_YVU420:
-	case TBM_FORMAT_YUV422:
-	case TBM_FORMAT_YVU422:
-	case TBM_FORMAT_YUV444:
-	case TBM_FORMAT_YVU444:
-		num = 1;
-		break;
-
-	case TBM_FORMAT_NV12:
-		num = 2;
-		break;
-
-	default:
-		num = 0;
-		break;
-	}
-
-	return num;
-}
-
-int
 tbm_exynos_bo_get_flags(tbm_bo bo)
 {
 	EXYNOS_RETURN_VAL_IF_FAIL(bo != NULL, 0);
@@ -2039,13 +1953,13 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	bufmgr_backend->bo_unmap = tbm_exynos_bo_unmap;
 	bufmgr_backend->surface_get_plane_data = tbm_exynos_surface_get_plane_data;
 	bufmgr_backend->surface_supported_format = tbm_exynos_surface_supported_format;
-	bufmgr_backend->surface_get_num_bos = tbm_exynos_surface_get_num_bos;
 	bufmgr_backend->bo_get_flags = tbm_exynos_bo_get_flags;
 	bufmgr_backend->bo_lock = NULL;
 	bufmgr_backend->bo_lock2 = tbm_exynos_bo_lock;
 	bufmgr_backend->bo_unlock = tbm_exynos_bo_unlock;
 
-	bufmgr_backend->flags = TBM_USE_2_0_BACKEND;
+	bufmgr_backend->flags |= TBM_USE_2_0_BACKEND;
+	bufmgr_backend->flags |= TBM_LOCK_CTRL_BACKEND;
 
 	if (!tbm_backend_init(bufmgr, bufmgr_backend)) {
 		TBM_EXYNOS_LOG("error: Fail to init backend!\n");
