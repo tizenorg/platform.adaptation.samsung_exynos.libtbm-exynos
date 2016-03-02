@@ -50,6 +50,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <pthread.h>
 #include <tbm_surface.h>
 #include <tbm_surface_internal.h>
+#include <tbm_drm_helper.h>
+
 #include <libudev.h>
 
 #include "tbm_bufmgr_tgl.h"
@@ -57,6 +59,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define DEBUG
 #define USE_DMAIMPORT
 #define TBM_COLOR_FORMAT_COUNT 8
+
+#define EXYNOS_DRM_NAME "exynos"
 
 #ifdef DEBUG
 #define LOG_TAG	"TBM_BACKEND"
@@ -98,7 +102,7 @@ char *target_name()
 }
 
 #define TBM_EXYNOS_LOG(fmt, args...) LOGE("\033[31m"  "[%s]" fmt "\033[0m", target_name(), ##args)
-#define DBG(fmt, args...)  {if (bDebug&01) LOGE(fmt, ##args)}
+#define DBG(fmt, args...)  {if (bDebug&01) LOGE(fmt, ##args);}
 #else
 #define TBM_EXYNOS_LOG(...)
 #define DBG(...)
@@ -233,8 +237,6 @@ struct _tbm_bufmgr_exynos {
 	int use_dma_fence;
 
 	int tgl_fd;
-
-	int fd_owner;
 };
 
 char *STR_DEVICE[] = {
@@ -536,6 +538,96 @@ _bo_destroy_cache_state(tbm_bo bo)
 }
 
 static int
+_tbm_exynos_open_drm()
+{
+	int fd = -1;
+
+	fd = drmOpen(EXYNOS_DRM_NAME, NULL);
+	if (fd < 0) {
+		TBM_EXYNOS_LOG ("[libtbm-exynos:%d] "
+			      "warning %s:%d fail to open drm\n",
+			      getpid(), __FUNCTION__, __LINE__);
+	}
+
+	if (fd < 0) {
+		struct udev *udev = NULL;
+		struct udev_enumerate *e = NULL;
+		struct udev_list_entry *entry = NULL;
+		struct udev_device *device = NULL, *drm_device = NULL, *device_parent = NULL;
+		const char *filepath;
+		struct stat s;
+		int fd = -1;
+		int ret;
+
+		TBM_EXYNOS_LOG ("[libtbm-exynos:%d] "
+			      "%s:%d search drm-device by udev\n",
+			      getpid(), __FUNCTION__, __LINE__);
+
+		udev = udev_new();
+		if (!udev) {
+			TBM_EXYNOS_LOG("udev_new() failed.\n");
+			return -1;
+		}
+
+		e = udev_enumerate_new(udev);
+		udev_enumerate_add_match_subsystem(e, "drm");
+		udev_enumerate_add_match_sysname(e, "card[0-9]*");
+		udev_enumerate_scan_devices(e);
+
+		udev_list_entry_foreach(entry, udev_enumerate_get_list_entry(e)) {
+			device = udev_device_new_from_syspath(udev_enumerate_get_udev(e),
+							      udev_list_entry_get_name(entry));
+			device_parent = udev_device_get_parent(device);
+			/* Not need unref device_parent. device_parent and device have same refcnt */
+			if (device_parent) {
+				if (strcmp(udev_device_get_sysname(device_parent), "exynos-drm") == 0) {
+					drm_device = device;
+					DBG("[%s] Found render device: '%s' (%s)\n",
+					    target_name(),
+					    udev_device_get_syspath(drm_device),
+					    udev_device_get_sysname(device_parent));
+					break;
+				}
+			}
+			udev_device_unref(device);
+		}
+
+		udev_enumerate_unref(e);
+
+		/* Get device file path. */
+		filepath = udev_device_get_devnode(drm_device);
+		if (!filepath) {
+			TBM_EXYNOS_LOG("udev_device_get_devnode() failed.\n");
+			udev_device_unref(drm_device);
+			udev_unref(udev);
+			return -1;
+		}
+
+		/* Open DRM device file and check validity. */
+		fd = open(filepath, O_RDWR | O_CLOEXEC);
+		if (fd < 0) {
+			TBM_EXYNOS_LOG("open(%s, O_RDWR | O_CLOEXEC) failed.\n");
+			udev_device_unref(drm_device);
+			udev_unref(udev);
+			return -1;
+		}
+
+		ret = fstat(fd, &s);
+		if (ret) {
+			TBM_EXYNOS_LOG("fstat() failed %s.\n");
+			udev_device_unref(drm_device);
+			udev_unref(udev);
+			return -1;
+		}
+
+		udev_device_unref(drm_device);
+		udev_unref(udev);
+	}
+
+	return fd;
+}
+
+static int
 _get_render_node(void)
 {
 	struct udev *udev = NULL;
@@ -548,6 +640,10 @@ _get_render_node(void)
 	int ret;
 
 	udev = udev_new();
+	if (!udev) {
+		TBM_EXYNOS_LOG("udev_new() failed.\n");
+		return -1;
+	}
 
 	e = udev_enumerate_new(udev);
 	udev_enumerate_add_match_subsystem(e, "drm");
@@ -1041,8 +1137,7 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 	name = _get_name(bufmgr_exynos->fd, gem);
 	if (!name) {
 		TBM_EXYNOS_LOG("error bo:%p Cannot get name from gem:%d, fd:%d (%s)\n",
-			       bo, gem, key, strerror(errno));
-		free(bo_exynos);
+			       bo, gem, key, strerror(errno)); 
 		return 0;
 	}
 
@@ -1481,8 +1576,7 @@ tbm_exynos_bufmgr_deinit(void *priv)
 		bufmgr_exynos->hashBos = NULL;
 	}
 
-	if (bufmgr_exynos->fd_owner)
-		close(bufmgr_exynos->fd);
+	close(bufmgr_exynos->fd);
 
 	close(bufmgr_exynos->tgl_fd);
 
@@ -1870,27 +1964,31 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		return 0;
 	}
 
-	if (_is_drm_master(fd)) {
-		bufmgr_exynos->fd = fd;
-		bufmgr_exynos->fd_owner = 0;
-		DBG("[%s] Display server use drm master fd:%d\n", target_name(), fd);
+	if (tbm_backend_is_display_server()) {
+		int master_fd = -1;
+
+		bufmgr_exynos->fd = -1;
+		master_fd = tbm_drm_helper_get_master_fd();
+		if (master_fd < 0) {
+			bufmgr_exynos->fd = _tbm_exynos_open_drm();
+			tbm_drm_helper_set_master_fd(bufmgr_exynos->fd);
+		} else {
+			bufmgr_exynos->fd = dup(master_fd);
+		}
+
+		if (bufmgr_exynos->fd < 0) {
+			TBM_EXYNOS_LOG ("[libtbm-exynos:%d] error: Fail to create drm!\n", getpid());
+			free (bufmgr_exynos);
+			return 0;
+		}
 	} else {
 		bufmgr_exynos->fd = _get_render_node();
 		if (bufmgr_exynos->fd < 0) {
-			bufmgr_exynos->fd = fd;
-			bufmgr_exynos->fd_owner = 0;
-			TBM_EXYNOS_LOG("[%s] get render node failed, use drm node:%d\n", target_name(),
-				       fd);
-		} else {
-			bufmgr_exynos->fd_owner = 1;
-			DBG("[%s] Use render node:%d\n", target_name(), fd);
+			TBM_EXYNOS_LOG("[%s] get render node failed\n", target_name(), fd);
+			free (bufmgr_exynos);
+			return 0;
 		}
-	}
-
-	if (bufmgr_exynos->fd < 0) {
-		TBM_EXYNOS_LOG("error: Fail to create drm!\n");
-		free(bufmgr_exynos);
-		return 0;
+		DBG("[%s] Use render node:%d\n", target_name(), bufmgr_exynos->fd);
 	}
 
 	/* open tgl fd for saving cache flush data */
@@ -1899,12 +1997,11 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	if (bufmgr_exynos->tgl_fd < 0) {
 		bufmgr_exynos->tgl_fd = open(tgl_devfile1, O_RDWR);
 		if (bufmgr_exynos->tgl_fd < 0) {
-			TBM_EXYNOS_LOG("[libtbm:%d] "
+			TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
 				       "error: Fail to open global_lock:%s\n",
 				       getpid(), tgl_devfile);
 
-			if (bufmgr_exynos->fd_owner)
-				close(bufmgr_exynos->fd);
+			close(bufmgr_exynos->fd);
 
 			free(bufmgr_exynos);
 			return 0;
@@ -1912,12 +2009,12 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	}
 
 	if (!_tgl_init(bufmgr_exynos->tgl_fd, GLOBAL_KEY)) {
-		TBM_EXYNOS_LOG("[libtbm:%d] "
+		TBM_EXYNOS_LOG("[libtbm-exynos:%d] "
 			       "error: Fail to initialize the tgl\n",
 			       getpid());
 
-		if (bufmgr_exynos->fd_owner)
-			close(bufmgr_exynos->fd);
+		close(bufmgr_exynos->fd);
+		close(bufmgr_exynos->tgl_fd);
 
 		free(bufmgr_exynos);
 		return 0;
@@ -1932,8 +2029,8 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		if (bufmgr_exynos->hashBos)
 			drmHashDestroy(bufmgr_exynos->hashBos);
 
-		if (bufmgr_exynos->fd_owner)
-			close(bufmgr_exynos->fd);
+		close(bufmgr_exynos->tgl_fd);
+		close(bufmgr_exynos->fd);
 
 		free(bufmgr_exynos);
 		return 0;
@@ -1965,8 +2062,8 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		TBM_EXYNOS_LOG("error: Fail to init backend!\n");
 		tbm_backend_free(bufmgr_backend);
 
-		if (bufmgr_exynos->fd_owner)
-			close(bufmgr_exynos->fd);
+		close(bufmgr_exynos->tgl_fd);
+		close(bufmgr_exynos->fd);
 
 		free(bufmgr_exynos);
 		return 0;
