@@ -695,6 +695,7 @@ _get_render_node(void)
 		TBM_EXYNOS_LOG("fstat() failed %s.\n");
 		udev_device_unref(drm_device);
 		udev_unref(udev);
+		close(fd);
 		return -1;
 	}
 
@@ -876,7 +877,7 @@ tbm_exynos_bo_alloc(tbm_bo bo, int size, int flags)
 
 	struct drm_exynos_gem_create arg = {0, };
 
-	arg.size = size;
+	arg.size = (uint64_t)size;
 	arg.flags = exynos_flags;
 	if (drmCommandWriteRead(bufmgr_exynos->fd, DRM_EXYNOS_GEM_CREATE, &arg,
 				sizeof(arg))) {
