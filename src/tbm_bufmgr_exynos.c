@@ -237,6 +237,9 @@ struct _tbm_bufmgr_exynos {
 	int use_dma_fence;
 
 	int tgl_fd;
+
+	char *device_name;
+	void *bind_display;
 };
 
 char *STR_DEVICE[] = {
@@ -619,6 +622,55 @@ _tbm_exynos_open_drm()
 	return fd;
 }
 #endif
+
+static int
+_check_render_node(void)
+{
+	struct udev *udev = NULL;
+	struct udev_enumerate *e = NULL;
+	struct udev_list_entry *entry = NULL;
+	struct udev_device *device = NULL, *drm_device = NULL, *device_parent = NULL;
+
+	udev = udev_new();
+	if (!udev) {
+		TBM_EXYNOS_LOG("udev_new() failed.\n");
+		return -1;
+	}
+
+	e = udev_enumerate_new(udev);
+	udev_enumerate_add_match_subsystem(e, "drm");
+	udev_enumerate_add_match_sysname(e, "renderD[0-9]*");
+	udev_enumerate_scan_devices(e);
+
+	udev_list_entry_foreach(entry, udev_enumerate_get_list_entry(e)) {
+		device = udev_device_new_from_syspath(udev_enumerate_get_udev(e),
+						      udev_list_entry_get_name(entry));
+		device_parent = udev_device_get_parent(device);
+		/* Not need unref device_parent. device_parent and device have same refcnt */
+		if (device_parent) {
+			if (strcmp(udev_device_get_sysname(device_parent), "exynos-drm") == 0) {
+				drm_device = device;
+				DBG("[%s] Found render device: '%s' (%s)\n",
+				    target_name(),
+				    udev_device_get_syspath(drm_device),
+				    udev_device_get_sysname(device_parent));
+				break;
+			}
+		}
+		udev_device_unref(device);
+	}
+
+	udev_enumerate_unref(e);
+	udev_unref(udev);
+
+	if (!drm_device) {
+		udev_device_unref(drm_device);
+		return 0;
+	}
+
+	udev_device_unref(drm_device);
+	return 1;
+}
 
 static int
 _get_render_node(void)
@@ -1574,6 +1626,9 @@ tbm_exynos_bufmgr_deinit(void *priv)
 
 	close(bufmgr_exynos->tgl_fd);
 
+	if (bufmgr_exynos->device_name)
+		free(bufmgr_exynos->device_name);
+
 	free(bufmgr_exynos);
 }
 
@@ -1933,6 +1988,25 @@ tbm_exynos_bo_get_flags(tbm_bo bo)
 	return bo_exynos->flags_tbm;
 }
 
+int
+tbm_exynos_bufmgr_bind_native_display (tbm_bufmgr bufmgr, void *native_display)
+{
+	tbm_bufmgr_exynos bufmgr_exynos;
+
+	bufmgr_exynos = tbm_backend_get_priv_from_bufmgr(bufmgr);
+	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
+
+	if (!tbm_drm_helper_wl_auth_server_init(native_display, bufmgr_exynos->fd,
+					   bufmgr_exynos->device_name, 0)) {
+		TBM_EXYNOS_LOG("[libtbm-exynos:%d] error:Fail to tbm_drm_helper_wl_server_init\n");
+		return 0;
+	}
+
+	bufmgr_exynos->bind_display = native_display;
+
+	return 1;
+}
+
 MODULEINITPPROTO(init_tbm_bufmgr_priv);
 
 static TBMModuleVersionInfo ExynosVersRec = {
@@ -1974,20 +2048,38 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 #else
 		bufmgr_exynos->fd = dup(fd);
 #endif
-
 		if (bufmgr_exynos->fd < 0) {
 			TBM_EXYNOS_LOG ("[libtbm-exynos:%d] error: Fail to create drm!\n", getpid());
 			free (bufmgr_exynos);
 			return 0;
 		}
-	} else {
-		bufmgr_exynos->fd = _get_render_node();
-		if (bufmgr_exynos->fd < 0) {
-			TBM_EXYNOS_LOG("[%s] get render node failed\n", target_name(), fd);
+
+		bufmgr_exynos->device_name = drmGetDeviceNameFromFd(bufmgr_exynos->fd);
+
+		if (!bufmgr_exynos->device_name)
+		{
+			TBM_EXYNOS_LOG ("[libtbm-exynos:%d] error: Fail to get device name!\n", getpid());
 			free (bufmgr_exynos);
 			return 0;
 		}
-		DBG("[%s] Use render node:%d\n", target_name(), bufmgr_exynos->fd);
+
+	} else {
+		if (_check_render_node()) {
+			bufmgr_exynos->fd = _get_render_node();
+			if (bufmgr_exynos->fd < 0) {
+				TBM_EXYNOS_LOG("[%s] get render node failed\n", target_name(), fd);
+				free (bufmgr_exynos);
+				return 0;
+			}
+			DBG("[%s] Use render node:%d\n", target_name(), bufmgr_exynos->fd);
+		}
+		else {
+			if (!tbm_drm_helper_get_auth_info(&(bufmgr_exynos->fd), &(bufmgr_exynos->device_name), NULL)) {
+				TBM_EXYNOS_LOG ("[libtbm-exynos:%d] error: Fail to get auth drm info!\n", getpid());
+				free (bufmgr_exynos);
+				return 0;
+			}
+		}
 	}
 
 	/* open tgl fd for saving cache flush data */
@@ -2054,8 +2146,11 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	bufmgr_backend->bo_lock2 = tbm_exynos_bo_lock;
 	bufmgr_backend->bo_unlock = tbm_exynos_bo_unlock;
 
+	if (tbm_backend_is_display_server() && !_check_render_node()) {
+		bufmgr_backend->bufmgr_bind_native_display = tbm_exynos_bufmgr_bind_native_display;
+	}
+
 	bufmgr_backend->flags |= TBM_USE_2_0_BACKEND;
-	bufmgr_backend->flags |= TBM_LOCK_CTRL_BACKEND;
 
 	if (!tbm_backend_init(bufmgr, bufmgr_backend)) {
 		TBM_EXYNOS_LOG("error: Fail to init backend!\n");
