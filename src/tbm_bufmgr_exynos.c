@@ -338,15 +338,6 @@ _tgl_get_data(int fd, unsigned int key)
 	return arg.data1;
 }
 
-static inline int
-_is_drm_master(int drm_fd)
-{
-	drm_magic_t magic;
-
-	return drmGetMagic(drm_fd, &magic) == 0 &&
-	       drmAuthMagic(drm_fd, magic) == 0;
-}
-
 static int
 _exynos_cache_flush(tbm_bo bo, int flags)
 {
