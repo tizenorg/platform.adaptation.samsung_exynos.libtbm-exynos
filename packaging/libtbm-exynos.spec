@@ -17,6 +17,8 @@ BuildRequires:  pkgconfig(libudev)
 %description
 descriptionion: Tizen Buffer manager backend module for exynos
 
+%global TZ_SYS_RO_SHARE  %{?TZ_SYS_RO_SHARE:%TZ_SYS_RO_SHARE}%{!?TZ_SYS_RO_SHARE:/usr/share}
+
 %prep
 %setup -q
 
@@ -29,8 +31,8 @@ make %{?_smp_mflags}
 
 %install
 rm -rf %{buildroot}
-mkdir -p %{buildroot}/usr/share/license
-cp -af COPYING %{buildroot}/usr/share/license/%{name}
+mkdir -p %{buildroot}/%{TZ_SYS_RO_SHARE}/license
+cp -af COPYING %{buildroot}/%{TZ_SYS_RO_SHARE}/license/%{name}
 %make_install
 
 
@@ -44,5 +46,5 @@ ln -s libtbm_exynos.so %{_libdir}/bufmgr/libtbm_default.so
 
 %files
 %{_libdir}/bufmgr/libtbm_*.so*
-/usr/share/license/%{name}
+%{TZ_SYS_RO_SHARE}/license/%{name}
 
