@@ -2059,6 +2059,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		if (!bufmgr_exynos->device_name)
 		{
 			TBM_EXYNOS_LOG ("[libtbm-exynos:%d] error: Fail to get device name!\n", getpid());
+			close(bufmgr_exynos->fd);
 			free (bufmgr_exynos);
 			return 0;
 		}
