@@ -531,7 +531,6 @@ _bo_destroy_cache_state(tbm_bo bo)
 	_tgl_destroy(bufmgr_exynos->tgl_fd, bo_exynos->name);
 }
 
-#if 0
 static int
 _tbm_exynos_open_drm()
 {
@@ -621,7 +620,6 @@ _tbm_exynos_open_drm()
 
 	return fd;
 }
-#endif
 
 static int
 _check_render_node(void)
@@ -2033,7 +2031,6 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	}
 
 	if (tbm_backend_is_display_server()) {
-#if 0
 		/* this code is applied with libtdm-exynos */
 		int master_fd = -1;
 
@@ -2045,9 +2042,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		} else {
 			bufmgr_exynos->fd = dup(master_fd);
 		}
-#else
-		bufmgr_exynos->fd = dup(fd);
-#endif
+
 		if (bufmgr_exynos->fd < 0) {
 			TBM_EXYNOS_LOG ("[libtbm-exynos:%d] error: Fail to create drm!\n", getpid());
 			free (bufmgr_exynos);
