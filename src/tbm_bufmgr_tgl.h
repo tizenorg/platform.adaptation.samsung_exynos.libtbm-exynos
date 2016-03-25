@@ -34,8 +34,10 @@
 
 #include <linux/ioctl.h>
 
+#ifdef ENABLE_CACHECRTL
 static char tgl_devfile[] = "/dev/slp_global_lock";
 static char tgl_devfile1[] = "/dev/tgl";
+#endif
 
 #define TGL_IOC_BASE				0x32
 
