@@ -472,7 +472,7 @@ _bo_set_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, in
 	}
 
 	if (need_flush) {
-		if (need_flush & TBM_CACHE_ALL)
+		if (need_flush & TBM_EXYNOS_CACHE_ALL)
 			_tgl_set_data(bufmgr_exynos->tgl_fd, GLOBAL_KEY, (unsigned int)(++cntFlush));
 
 		/* call cache flush */
@@ -1209,7 +1209,7 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 	tbm_bufmgr_exynos bufmgr_exynos;
 	tbm_bo_exynos bo_exynos;
 	PrivGem *privGem = NULL;
-	int name;
+	unsigned int name;
 	int ret;
 
 	bufmgr_exynos = (tbm_bufmgr_exynos)tbm_backend_get_bufmgr_priv(bo);
@@ -1231,7 +1231,7 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 	name = _get_name(bufmgr_exynos->fd, gem);
 	if (!name) {
 		TBM_EXYNOS_LOG("error bo:%p Cannot get name from gem:%d, fd:%d (%s)\n",
-			       bo, gem, key, strerror(errno)); 
+			       bo, gem, key, strerror(errno));
 		return 0;
 	}
 
