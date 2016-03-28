@@ -1680,10 +1680,13 @@ tbm_exynos_bufmgr_deinit(void *priv)
 
 	_bufmgr_deinit_cache_state(bufmgr_exynos);
 
-	close(bufmgr_exynos->fd);
+	if (bufmgr_exynos->bind_display)
+		tbm_drm_helper_wl_auth_server_deinit();
 
 	if (bufmgr_exynos->device_name)
 		free(bufmgr_exynos->device_name);
+
+	close(bufmgr_exynos->fd);
 
 	free(bufmgr_exynos);
 }
