@@ -1117,7 +1117,6 @@ tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
 
 	ret = drmHashLookup(bufmgr_exynos->hashBos, key, (void **)&privGem);
 	if (ret == 0) {
-		privGem->ref_count++;
 		return privGem->bo_priv;
 	}
 
@@ -1238,7 +1237,6 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 	ret = drmHashLookup(bufmgr_exynos->hashBos, name, (void **)&privGem);
 	if (ret == 0) {
 		if (gem == privGem->bo_priv->gem) {
-			privGem->ref_count++;
 			return privGem->bo_priv;
 		}
 	}
