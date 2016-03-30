@@ -579,7 +579,6 @@ _bufmgr_deinit_cache_state(tbm_bufmgr_exynos bufmgr_exynos)
 #endif
 }
 
-#if 0
 static int
 _tbm_exynos_open_drm()
 {
@@ -669,7 +668,6 @@ _tbm_exynos_open_drm()
 
 	return fd;
 }
-#endif
 
 static int
 _check_render_node(void)
@@ -1684,6 +1682,9 @@ tbm_exynos_bufmgr_deinit(void *priv)
 	if (bufmgr_exynos->device_name)
 		free(bufmgr_exynos->device_name);
 
+	if (tbm_backend_is_display_server())
+		tbm_drm_helper_unset_tbm_master_fd();
+
 	close(bufmgr_exynos->fd);
 
 	free(bufmgr_exynos);
@@ -1766,7 +1767,6 @@ _new_calc_uvplane_nv12(int width, int height)
 
 /**
  * @brief get the plane data of the surface.
- * @param[in] surface : the surface
  * @param[in] width : the width of the surface
  * @param[in] height : the height of the surface
  * @param[in] format : the format of the surface
@@ -1778,7 +1778,7 @@ _new_calc_uvplane_nv12(int width, int height)
  * @return 1 if this function succeeds, otherwise 0.
  */
 int
-tbm_exynos_surface_get_plane_data(tbm_surface_h surface, int width, int height,
+tbm_exynos_surface_get_plane_data(int width, int height,
 				  tbm_format format, int plane_idx, uint32_t *size, uint32_t *offset,
 				  uint32_t *pitch, int *bo_idx)
 {
@@ -2090,32 +2090,28 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	}
 
 	if (tbm_backend_is_display_server()) {
-#if 0
-		/* this code is applied with libtdm-exynos */
-		int master_fd = -1;
-
 		bufmgr_exynos->fd = -1;
-		master_fd = tbm_drm_helper_get_master_fd();
-		if (master_fd < 0) {
+
+		bufmgr_exynos->fd = tbm_drm_helper_get_master_fd();
+		if (bufmgr_exynos->fd < 0) {
 			bufmgr_exynos->fd = _tbm_exynos_open_drm();
-			tbm_drm_helper_set_master_fd(bufmgr_exynos->fd);
-		} else {
-			bufmgr_exynos->fd = dup(master_fd);
 		}
-#else
-		bufmgr_exynos->fd = dup(fd);
-#endif
+
 		if (bufmgr_exynos->fd < 0) {
 			TBM_EXYNOS_LOG ("[libtbm-exynos:%d] error: Fail to create drm!\n", getpid());
 			free (bufmgr_exynos);
 			return 0;
 		}
 
+		tbm_drm_helper_set_tbm_master_fd(bufmgr_exynos->fd);
+
 		bufmgr_exynos->device_name = drmGetDeviceNameFromFd(bufmgr_exynos->fd);
 
 		if (!bufmgr_exynos->device_name)
 		{
 			TBM_EXYNOS_LOG ("[libtbm-exynos:%d] error: Fail to get device name!\n", getpid());
+
+			tbm_drm_helper_unset_tbm_master_fd();
 			close(bufmgr_exynos->fd);
 			free (bufmgr_exynos);
 			return 0;
@@ -2140,20 +2136,24 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		}
 	}
 
-        //Check if the tbm manager supports dma fence or not.
-        int fp = open("/sys/module/dmabuf_sync/parameters/enabled", O_RDONLY);
-        int length;
-        char buf[1];
-        if (fp != -1) {
-            length = read(fp, buf, 1);
-            if (length == 1 && buf[0] == '1')
-                bufmgr_exynos->use_dma_fence = 1;
-    
-            close(fp);
-         }
+	//Check if the tbm manager supports dma fence or not.
+	int fp = open("/sys/module/dmabuf_sync/parameters/enabled", O_RDONLY);
+	int length;
+	char buf[1];
+	if (fp != -1) {
+		length = read(fp, buf, 1);
+
+		if (length == 1 && buf[0] == '1')
+			bufmgr_exynos->use_dma_fence = 1;
+
+		close(fp);
+	}
 
 	if (!_bufmgr_init_cache_state(bufmgr_exynos)) {
 		TBM_EXYNOS_LOG ("[libtbm-exynos:%d] error: init bufmgr cache state failed!\n", getpid());
+
+		if (tbm_backend_is_display_server())
+			tbm_drm_helper_unset_tbm_master_fd();
 
 		close(bufmgr_exynos->fd);
 
@@ -2171,6 +2171,9 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 			drmHashDestroy(bufmgr_exynos->hashBos);
 
 		_bufmgr_deinit_cache_state(bufmgr_exynos);
+
+		if (tbm_backend_is_display_server())
+			tbm_drm_helper_unset_tbm_master_fd();
 
 		close(bufmgr_exynos->fd);
 
@@ -2193,21 +2196,21 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	bufmgr_backend->surface_get_plane_data = tbm_exynos_surface_get_plane_data;
 	bufmgr_backend->surface_supported_format = tbm_exynos_surface_supported_format;
 	bufmgr_backend->bo_get_flags = tbm_exynos_bo_get_flags;
-	bufmgr_backend->bo_lock = NULL;
-	bufmgr_backend->bo_lock2 = tbm_exynos_bo_lock;
+	bufmgr_backend->bo_lock = tbm_exynos_bo_lock;
 	bufmgr_backend->bo_unlock = tbm_exynos_bo_unlock;
 
 	if (tbm_backend_is_display_server() && !_check_render_node()) {
 		bufmgr_backend->bufmgr_bind_native_display = tbm_exynos_bufmgr_bind_native_display;
 	}
 
-	bufmgr_backend->flags |= TBM_USE_2_0_BACKEND;
-
 	if (!tbm_backend_init(bufmgr, bufmgr_backend)) {
 		TBM_EXYNOS_LOG("error: Fail to init backend!\n");
 		tbm_backend_free(bufmgr_backend);
 
 		_bufmgr_deinit_cache_state(bufmgr_exynos);
+
+		if (tbm_backend_is_display_server())
+			tbm_drm_helper_unset_tbm_master_fd();
 
 		close(bufmgr_exynos->fd);
 
