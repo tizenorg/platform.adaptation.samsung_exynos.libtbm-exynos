@@ -397,7 +397,7 @@ _exynos_cache_flush(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, in
 #endif
 
 static int
-_bo_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, int flag)
+_bo_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, int import)
 {
 #ifdef ENABLE_CACHECRTL
 	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
@@ -410,7 +410,7 @@ _bo_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, i
 
 	_tgl_init(bufmgr_exynos->tgl_fd, bo_exynos->name);
 
-	if (flag == 0) {
+	if (import == 0) {
 		cache_state.data.isDirtied = DEVICE_NONE;
 		cache_state.data.isCached = 0;
 		cache_state.data.cntFlush = 0;
