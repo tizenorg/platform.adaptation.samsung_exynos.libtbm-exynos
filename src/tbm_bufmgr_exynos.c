@@ -112,9 +112,15 @@ char *target_name()
 #define DIV_ROUND_UP(n, d) (((n) + (d) - 1) / (d))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
+#ifdef ALIGN_EIGHT
+#define TBM_SURFACE_ALIGNMENT_PLANE (8)
+#define TBM_SURFACE_ALIGNMENT_PITCH_RGB (8)
+#else
 #define TBM_SURFACE_ALIGNMENT_PLANE (64)
-#define TBM_SURFACE_ALIGNMENT_PLANE_NV12 (4096)
 #define TBM_SURFACE_ALIGNMENT_PITCH_RGB (64)
+#endif
+
+#define TBM_SURFACE_ALIGNMENT_PLANE_NV12 (4096)
 #define TBM_SURFACE_ALIGNMENT_PITCH_YUV (16)
 
 #define SZ_1M                                   0x00100000

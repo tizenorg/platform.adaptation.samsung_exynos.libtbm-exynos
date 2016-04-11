@@ -25,6 +25,9 @@ descriptionion: Tizen Buffer manager backend module for exynos
 %build
 
 %reconfigure --prefix=%{_prefix} --libdir=%{_libdir}/bufmgr --disable-cachectrl \
+%if "%_repository" == "target-circle"
+             --enable-align-eight \
+%endif
             CFLAGS="${CFLAGS} -Wall -Werror" LDFLAGS="${LDFLAGS} -Wl,--hash-style=both -Wl,--as-needed"
 
 make %{?_smp_mflags}

@@ -60,6 +60,18 @@ if test "x$BACKEND_CTRL" = xyes; then
     AC_DEFINE(ALWAYS_BACKEND_CTRL, 1, [Enable always backend ctrl])
 fi
 
+AC_ARG_ENABLE([align-eight],
+              [AC_HELP_STRING([--enable-align-eight], [Enable surface align eight])],
+              [], [enable_align_eight=no])
+
+if test "x$enable_align_eight" = "xyes"; then
+    AC_DEFINE(ALIGN_EIGHT, 1, [Enable surface align eight])
+fi
+
+if test "x$BACKEND_CTRL" = xyes; then
+    AC_DEFINE(ALWAYS_BACKEND_CTRL, 1, [Enable always backend ctrl])
+fi
+
 LIBTBM_EXYNOS_CFLAGS="$LIBDRM_CFLAGS $LIBDRM_EXYNOS_CFLAGS $LIBTBM_CFLAGS $DLOG_CFLAGS $LIBUDEV_CFLAGS"
 LIBTBM_EXYNOS_LIBS="$LIBDRM_LIBS $LIBDRM_EXYNOS_LIBS $LIBTBM_LIBS $DLOG_LIBS $LIBUDEV_LIBS"
 AC_SUBST(LIBTBM_EXYNOS_CFLAGS)
