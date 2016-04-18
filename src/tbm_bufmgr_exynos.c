@@ -604,7 +604,6 @@ _tbm_exynos_open_drm()
 		struct udev_device *device = NULL, *drm_device = NULL, *device_parent = NULL;
 		const char *filepath;
 		struct stat s;
-		int fd = -1;
 		int ret;
 
 		TBM_EXYNOS_LOG ("[libtbm-exynos:%d] "
@@ -663,6 +662,7 @@ _tbm_exynos_open_drm()
 		ret = fstat(fd, &s);
 		if (ret) {
 			TBM_EXYNOS_LOG("fstat() failed %s.\n");
+			close(fd);
 			udev_device_unref(drm_device);
 			udev_unref(udev);
 			return -1;
