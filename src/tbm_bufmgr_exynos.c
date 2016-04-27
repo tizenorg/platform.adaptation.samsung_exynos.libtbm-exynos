@@ -1934,7 +1934,31 @@ tbm_exynos_surface_get_plane_data(int width, int height,
 	case TBM_FORMAT_YUV410:
 	case TBM_FORMAT_YVU410:
 		bpp = 9;
-		_bo_idx = 0;
+		/*if(plane_idx == 0)*/
+		{
+			_offset = 0;
+			_pitch = SIZE_ALIGN(width, TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+			_size = SIZE_ALIGN(_pitch * height, TBM_SURFACE_ALIGNMENT_PLANE);
+			_bo_idx = 0;
+			if (plane_idx == 0)
+				break;
+		}
+		/*else if(plane_idx == 1)*/
+		{
+			_offset += _size;
+			_pitch = SIZE_ALIGN(width / 4, TBM_SURFACE_ALIGNMENT_PITCH_YUV / 4);
+			_size = SIZE_ALIGN(_pitch * (height / 4), TBM_SURFACE_ALIGNMENT_PLANE);
+			_bo_idx = 0;
+			if (plane_idx == 1)
+				break;
+		}
+		/*else if (plane_idx == 2)*/
+		{
+			_offset += _size;
+			_pitch = SIZE_ALIGN(width / 4, TBM_SURFACE_ALIGNMENT_PITCH_YUV / 4);
+			_size = SIZE_ALIGN(_pitch * (height / 4), TBM_SURFACE_ALIGNMENT_PLANE);
+			_bo_idx = 0;
+		}
 		break;
 	case TBM_FORMAT_YUV411:
 	case TBM_FORMAT_YVU411:
