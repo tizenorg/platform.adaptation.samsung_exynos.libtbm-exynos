@@ -64,6 +64,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #ifdef DEBUG
 #define LOG_TAG	"TBM_BACKEND"
+
+#define DRM_MASTER_NODE "/dev/dri/card0"
 #include <dlog.h>
 static int bDebug;
 
@@ -589,7 +591,9 @@ static int
 _tbm_exynos_open_drm()
 {
 	int fd = -1;
-
+	int ret = 0;
+	struct stat s;
+#if 0
 	fd = drmOpen(EXYNOS_DRM_NAME, NULL);
 	if (fd < 0) {
 		TBM_EXYNOS_LOG ("[libtbm-exynos:%d] "
@@ -625,7 +629,6 @@ _tbm_exynos_open_drm()
 			device = udev_device_new_from_syspath(udev_enumerate_get_udev(e),
 							      udev_list_entry_get_name(entry));
 			device_parent = udev_device_get_parent(device);
-			/* Not need unref device_parent. device_parent and device have same refcnt */
 			if (device_parent) {
 				if (strcmp(udev_device_get_sysname(device_parent), "exynos-drm") == 0) {
 					drm_device = device;
@@ -641,7 +644,6 @@ _tbm_exynos_open_drm()
 
 		udev_enumerate_unref(e);
 
-		/* Get device file path. */
 		filepath = udev_device_get_devnode(drm_device);
 		if (!filepath) {
 			TBM_EXYNOS_LOG("udev_device_get_devnode() failed.\n");
@@ -649,13 +651,15 @@ _tbm_exynos_open_drm()
 			udev_unref(udev);
 			return -1;
 		}
-
+#endif
 		/* Open DRM device file and check validity. */
-		fd = open(filepath, O_RDWR | O_CLOEXEC);
+		fd = open(DRM_MASTER_NODE, O_RDWR | O_CLOEXEC);
 		if (fd < 0) {
 			TBM_EXYNOS_LOG("open(%s, O_RDWR | O_CLOEXEC) failed.\n");
+#if 0
 			udev_device_unref(drm_device);
 			udev_unref(udev);
+#endif
 			return -1;
 		}
 
@@ -663,14 +667,17 @@ _tbm_exynos_open_drm()
 		if (ret) {
 			TBM_EXYNOS_LOG("fstat() failed %s.\n");
 			close(fd);
+#if 0
 			udev_device_unref(drm_device);
 			udev_unref(udev);
+#endif
 			return -1;
 		}
-
+#if 0
 		udev_device_unref(drm_device);
 		udev_unref(udev);
 	}
+#endif
 
 	return fd;
 }
@@ -724,6 +731,7 @@ _check_render_node(void)
 	return 1;
 }
 
+#if 0
 static int
 _get_render_node(void)
 {
@@ -751,7 +759,6 @@ _get_render_node(void)
 		device = udev_device_new_from_syspath(udev_enumerate_get_udev(e),
 						      udev_list_entry_get_name(entry));
 		device_parent = udev_device_get_parent(device);
-		/* Not need unref device_parent. device_parent and device have same refcnt */
 		if (device_parent) {
 			if (strcmp(udev_device_get_sysname(device_parent), "exynos-drm") == 0) {
 				drm_device = device;
@@ -767,7 +774,6 @@ _get_render_node(void)
 
 	udev_enumerate_unref(e);
 
-	/* Get device file path. */
 	filepath = udev_device_get_devnode(drm_device);
 	if (!filepath) {
 		TBM_EXYNOS_LOG("udev_device_get_devnode() failed.\n");
@@ -776,7 +782,6 @@ _get_render_node(void)
 		return -1;
 	}
 
-	/* Open DRM device file and check validity. */
 	fd = open(filepath, O_RDWR | O_CLOEXEC);
 	if (fd < 0) {
 		TBM_EXYNOS_LOG("open(%s, O_RDWR | O_CLOEXEC) failed.\n");
@@ -799,6 +804,7 @@ _get_render_node(void)
 
 	return fd;
 }
+#endif
 
 static unsigned int
 _get_exynos_flag_from_tbm(unsigned int ftbm)
@@ -1129,7 +1135,7 @@ tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
 
 	arg.name = key;
 	if (drmIoctl(bufmgr_exynos->fd, DRM_IOCTL_GEM_OPEN, &arg)) {
-		TBM_EXYNOS_LOG("error Cannot open gem name=%d\n", key);
+		printf("error Cannot open gem name=%d\n", key);
 		return 0;
 	}
 
@@ -1138,13 +1144,13 @@ tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
 				DRM_EXYNOS_GEM_GET,
 				&info,
 				sizeof(struct drm_exynos_gem_info))) {
-		TBM_EXYNOS_LOG("error Cannot get gem info=%d\n", key);
+		printf("error Cannot get gem info=%d\n", key);
 		return 0;
 	}
 
 	bo_exynos = calloc(1, sizeof(struct _tbm_bo_exynos));
 	if (!bo_exynos) {
-		TBM_EXYNOS_LOG("error fail to allocate the bo private\n");
+		printf("error fail to allocate the bo private\n");
 		return 0;
 	}
 
@@ -1166,7 +1172,7 @@ tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
 
 		arg.handle = bo_exynos->gem;
 		if (drmIoctl(bo_exynos->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg)) {
-			TBM_EXYNOS_LOG("error Cannot dmabuf=%d\n", bo_exynos->gem);
+			printf("error Cannot dmabuf=%d\n", bo_exynos->gem);
 			free(bo_exynos);
 			return 0;
 		}
@@ -1193,7 +1199,7 @@ tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
 		TBM_EXYNOS_LOG("error Cannot insert bo to Hash(%d)\n", bo_exynos->name);
 	}
 
-	DBG("    [%s] bo:%p, gem:%d(%d), fd:%d, flags:%d(%d), size:%d\n",
+	printf("    [%s] bo:%p, gem:%d(%d), fd:%d, flags:%d(%d), size:%d\n",
 	    target_name(),
 	    bo,
 	    bo_exynos->gem, bo_exynos->name,
@@ -2148,14 +2154,18 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		}
 
 	} else {
+#if 0
 		if (_check_render_node()) {
 			bufmgr_exynos->fd = _get_render_node();
-			if (bufmgr_exynos->fd < 0) {
-				TBM_EXYNOS_LOG("[%s] get render node failed\n", target_name(), fd);
-				free (bufmgr_exynos);
-				return 0;
-			}
-			DBG("[%s] Use render node:%d\n", target_name(), bufmgr_exynos->fd);
+#endif
+		bufmgr_exynos->fd = _tbm_exynos_open_drm();
+		if (bufmgr_exynos->fd < 0) {
+			TBM_EXYNOS_LOG("[%s] get render node failed\n", target_name(), fd);
+			free (bufmgr_exynos);
+			return 0;
+		}
+		DBG("[%s] Use render node:%d\n", target_name(), bufmgr_exynos->fd);
+#if 0
 		}
 		else {
 			if (!tbm_drm_helper_get_auth_info(&(bufmgr_exynos->fd), &(bufmgr_exynos->device_name), NULL)) {
@@ -2164,6 +2174,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 				return 0;
 			}
 		}
+#endif
 	}
 
 	//Check if the tbm manager supports dma fence or not.
