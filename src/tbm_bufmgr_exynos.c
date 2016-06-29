@@ -683,6 +683,10 @@ _check_render_node(void)
 	struct udev_list_entry *entry = NULL;
 	struct udev_device *device = NULL, *drm_device = NULL, *device_parent = NULL;
 
+#ifndef USE_RENDER_NODE
+	return 0;
+#endif
+
 	udev = udev_new();
 	if (!udev) {
 		TBM_EXYNOS_LOG("udev_new() failed.\n");
