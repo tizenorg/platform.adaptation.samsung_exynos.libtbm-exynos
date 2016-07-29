@@ -1,0 +1,58 @@
+This guide for the development under the Android.
+
+> - host promt
+@ - chroot system promt
+$ - target promt
+
+- All commans are executed on the host unless otherwise specified.
+- Some files you may find on ownCloud -- Public/ToA .
+
+1. Create bootstrap:  https://debian.pro/440 (Russian)
+    > cd <directory you wanna use as your new system root directory.>
+    > sudo debootstrap trusty . http://mirror.yandex.ru/ubuntu
+
+2. Make some preparations to your new system: 
+    - mount host's proc fs to your new system /proc
+    (you may make this mount permanently by adding an entry to /etc/fstab on the host)
+
+3. Login in created system:
+   > sudo chroot <directory you've placed bootstrap in>
+   - http://la2ha.ru/dev-seo-diy/unix/setting_locale_failed (Russian)
+
+4. Create an user you will use under the devopment (on your new system).
+5. Fix the problem with sudoers file (on your new system) -- http://unixforum.org/index.php?showtopic=135020 . (Russian)
+6. Install make, autoconf, libtool, texinfo and pkg-config packages (on your new system).
+7. Install android-tools-adb packages(amd64) (on your new system) -- http://packages.ubuntu.com/ru/trusty/devel/android-tools-adb .
+8. Download Android ndk -- https://developer.android.com/ndk/downloads/index.html .
+
+9. Extract a standalone android toolchain: -- https://developer.android.com/ndk/guides/standalone_toolchain.html
+   > cd <directory you've unpacked Android ndk into>
+   > build/tools/make-standalone-toolchain.sh --toolchain=arm-linux-androideabi-4.9 --platform=android-22 --install-dir=<directory on your chroot system, this how_to considers you've chosen ~/bin/android_toolchain>
+
+10. Add a path to the android toolchain to your system PATH env variable (on your new system): 
+  @ echo "PATH=${HOME}/bin/android_toolchain/bin:${PATH}" >> ~/.bashrc
+
+11. Add a path to the ~/bin to your system PATH env variable (on your new system): 
+  @ echo "PATH=${HOME}/bin/:${PATH}" >> ~/.bashrc
+
+12. Prepare rpm (on your new system):
+  @ sudo apt-get install rpm
+  @ mkdir -p ~/redhat/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+  @ echo "%_topdir /home/$USER/redhat" >> ~/.rpmmacros
+ 
+Now you have the prepared environment to build for the Android.
+
+What to do next is your choise...
+
+Suggested steps are:
+ - download a sources for a project you want to build for the Android.
+ - create .spec file:
+   - set a prefix variable to /usr/local, if your project use an autotools,
+     to avoid a cluttering your chroot's root [by default prefix is /usr/local].
+ - run rpmbuild --target armv7l -bb <.spec file> .
+   - if you want to install the build results to a target add an option '--noclean' (you will be able
+     to copy the results to a target easy).
+ - install rpm packages to your chroot system: sudo rpm -ivh --nodeps --ignorearch <.rpm to install> .
+   - a next build will be able to use a resulst of the current build.
+ - copy the build results to a target: adb push ~/redhat/BUILDROOT/<name of project.arm> <wherever you want> .
+   - do not forget to remove an unnecessary files: *.la, *.h, *.pc and so on.
