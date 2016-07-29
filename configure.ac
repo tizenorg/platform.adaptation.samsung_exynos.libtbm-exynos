@@ -18,8 +18,7 @@
 #  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 AC_PREREQ(2.60)
-AC_INIT(libtbm-exynos, 1.0.5)
-AC_USE_SYSTEM_EXTENSIONS
+AC_INIT(libtbm-android, 0.9.0)
 AC_CONFIG_SRCDIR([Makefile.am])
 AM_INIT_AUTOMAKE([dist-bzip2])
 
@@ -30,54 +29,18 @@ AC_PROG_LIBTOOL
 AC_PROG_CC
 
 AC_HEADER_STDC
-AC_SYS_LARGEFILE
-AC_FUNC_ALLOCA
 
 # Enable quiet compiles on automake 1.11.
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
-PKG_CHECK_MODULES(LIBDRM, libdrm)
-PKG_CHECK_MODULES(LIBDRM_EXYNOS, libdrm_exynos)
 PKG_CHECK_MODULES(LIBTBM, libtbm)
-PKG_CHECK_MODULES(DLOG, dlog)
-PKG_CHECK_MODULES(LIBUDEV, libudev)
 
-AC_ARG_ENABLE(cachectrl,
-	      AS_HELP_STRING([--enable-cachectrl],
-	      [Enable cache control (default: enable)]),
-	      [CACHE_CTRL=$enableval], [CACHE_CTRL=yes])
+LIBTBM_ANDROID_CFLAGS="$LIBTBM_CFLAGS"
+LIBTBM_ANDROID_LIBS="$LIBTBM_LIBS"
+AC_SUBST(LIBTBM_ANDROID_CFLAGS)
+AC_SUBST(LIBTBM_ANDROID_LIBS)
 
-if test "x$CACHE_CTRL" = xyes; then
-    AC_DEFINE(ENABLE_CACHECRTL, 1, [Enable cache control])
-fi
-
-AC_ARG_ENABLE(backendctrl,
-	      AS_HELP_STRING([--enable-backendctrl],
-	      [Enable always backend ctrl (default: enable)]),
-	      [BACKENED_CTRL=$enableval], [BACKEND_CTRL=yes])
-
-if test "x$BACKEND_CTRL" = xyes; then
-    AC_DEFINE(ALWAYS_BACKEND_CTRL, 1, [Enable always backend ctrl])
-fi
-
-AC_ARG_ENABLE([align-eight],
-              [AC_HELP_STRING([--enable-align-eight], [Enable surface align eight])],
-              [], [enable_align_eight=no])
-
-if test "x$enable_align_eight" = "xyes"; then
-    AC_DEFINE(ALIGN_EIGHT, 1, [Enable surface align eight])
-fi
-
-if test "x$BACKEND_CTRL" = xyes; then
-    AC_DEFINE(ALWAYS_BACKEND_CTRL, 1, [Enable always backend ctrl])
-fi
-
-LIBTBM_EXYNOS_CFLAGS="$LIBDRM_CFLAGS $LIBDRM_EXYNOS_CFLAGS $LIBTBM_CFLAGS $DLOG_CFLAGS $LIBUDEV_CFLAGS"
-LIBTBM_EXYNOS_LIBS="$LIBDRM_LIBS $LIBDRM_EXYNOS_LIBS $LIBTBM_LIBS $DLOG_LIBS $LIBUDEV_LIBS"
-AC_SUBST(LIBTBM_EXYNOS_CFLAGS)
-AC_SUBST(LIBTBM_EXYNOS_LIBS)
-
-bufmgr_dir=${libdir#*/}
+bufmgr_dir=$libdir/bufmgr
 AC_SUBST(bufmgr_dir)
 
 AC_OUTPUT([
@@ -87,8 +50,8 @@ AC_OUTPUT([
 echo ""
 echo "CFLAGS  : $CFLAGS"
 echo "LDFLAGS : $LDFLAGS"
-echo "LIBTBM_EXYNOS_CFLAGS : $LIBTBM_EXYNOS_CFLAGS"
-echo "LIBTBM_EXYNOS_LIBS   : $LIBTBM_EXYNOS_LIBS"
+echo "LIBTBM_ANDROID_CFLAGS : $LIBTBM_ANDROID_CFLAGS"
+echo "LIBTBM_ANDROID_LIBS   : $LIBTBM_ANDROID_LIBS"
 echo "bufmgr_dir : $bufmgr_dir"
 echo ""
 
